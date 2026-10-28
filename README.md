@@ -1,25 +1,36 @@
-<img src="assets/icon.png" width="96" alt="Feedline icon">
+<div align="center">
 
-# Feedline
+<img src=".github/readme-icon.png" width="112" alt="Feedline icon">
 
-A calm, offline-first RSS reader for Android. No accounts, no servers, no tracking: feeds, articles and images all live on your phone.
+<h1>Feedline</h1>
+
+<p>A calm, offline-first RSS reader for Android.<br>No accounts, no servers, no tracking: feeds, articles and images all live on your phone.</p>
 
 <p>
-  <img src=".github/screenshots/timeline.png" width="24%" alt="Timeline">
-  <img src=".github/screenshots/reader.png" width="24%" alt="Reader">
-  <img src=".github/screenshots/feeds.png" width="24%" alt="Feed picker">
-  <img src=".github/screenshots/settings.png" width="24%" alt="Settings">
+  <a href="https://github.com/deepakness/feedline/releases/latest"><img src="https://img.shields.io/github/v/release/deepakness/feedline?color=B4532A" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/Android-7.0%2B-3C6E47?logo=android&logoColor=white" alt="Android 7.0+">
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/deepakness/feedline?color=1D1B18" alt="MIT license"></a>
+  <a href="https://github.com/deepakness/feedline/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/deepakness/feedline/ci.yml?branch=main&label=CI" alt="CI status"></a>
 </p>
 
-## Install
+<a href="https://github.com/deepakness/feedline/releases/latest/download/feedline.apk"><img src="https://img.shields.io/github/v/release/deepakness/feedline?label=Download%20APK&logo=android&logoColor=white&style=for-the-badge&color=1D1B18" alt="Download APK"></a>
 
-[![Download APK](https://img.shields.io/github/v/release/deepakness/feedline?label=Download%20APK&logo=android&style=for-the-badge)](https://github.com/deepakness/feedline/releases/latest/download/feedline.apk)
+<p><sub>Older 32-bit phone? Get <a href="https://github.com/deepakness/feedline/releases/latest/download/feedline-armv7.apk">feedline-armv7.apk</a></sub></p>
+
+<img src=".github/screenshots/timeline.png" width="23%" alt="Timeline">
+<img src=".github/screenshots/reader.png" width="23%" alt="Reader">
+<img src=".github/screenshots/feeds.png" width="23%" alt="Feed picker">
+<img src=".github/screenshots/settings.png" width="23%" alt="Settings">
+
+</div>
+
+## Install
 
 1. On your phone, tap **Download APK** above. It always fetches the latest version.
 2. Open the downloaded `feedline.apk`. If Android asks, allow your browser to install apps.
 3. Open Feedline and add a feed, or import an OPML file from another reader.
 
-It needs Android 7.0 or newer. `feedline.apk` is for 64-bit phones, which is almost every phone from the last several years. For an older or budget phone with a 32-bit processor, download [`feedline-armv7.apk`](https://github.com/deepakness/feedline/releases/latest/download/feedline-armv7.apk) instead. If you're not sure, try `feedline.apk` first; a phone that can't use it says the app isn't compatible.
+`feedline.apk` is for 64-bit phones, which is almost every phone from the last several years. Older or budget 32-bit phones need `feedline-armv7.apk`. If you're not sure, try `feedline.apk` first; a phone that can't use it says the app isn't compatible.
 
 **Warnings during install are normal.** Your browser or Google Play Protect may warn about an app from outside the Play Store. Choose to keep the download, and if Play Protect blocks it, tap **More details → Install anyway**. Feedline has no ads, trackers or accounts; the [source](src) is all here.
 

@@ -40,3 +40,11 @@ draw_mark(1024, vis, off).save(f'{root}/assets/android-icon-foreground.png')
 draw_mark(1024, vis, off, mono=True).save(f'{root}/assets/android-icon-monochrome.png')
 # Splash: same proportions as the old splash mark on its 512 canvas.
 draw_mark(512, 512, 0).save(f'{root}/assets/splash-icon.png')
+# README icon: rounded corners baked in (GitHub strips CSS), with a hairline so it reads on white.
+n = 256
+readme = Image.open(f'{root}/assets/icon.png').convert('RGBA').resize((n * SS, n * SS), Image.LANCZOS)
+mask = Image.new('L', readme.size, 0)
+ImageDraw.Draw(mask).rounded_rectangle((0, 0, n * SS - 1, n * SS - 1), radius=56 * SS, fill=255)
+readme.putalpha(mask)
+ImageDraw.Draw(readme).rounded_rectangle((0, 0, n * SS - 1, n * SS - 1), radius=56 * SS, outline='#E6DFD3', width=3 * SS)
+readme.resize((n, n), Image.LANCZOS).save(f'{root}/.github/readme-icon.png')
