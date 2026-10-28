@@ -73,17 +73,28 @@ def place(img, ph, x, y, angle=0, shadow=70):
 
 def text(d, xy, s, f, fill, anchor='la'): d.text(xy, s, font=f, fill=fill, anchor=anchor)
 
-# Terracotta background, tilted phones.
+# Terracotta background, tilted phones, everything inside a PAD margin.
+PAD = 72
+
 def v4():
     img = Image.new('RGB', (W, H), ACC); d = ImageDraw.Draw(img)
-    icon(img, 80, 120, 112, border=None)
-    text(d, (76, 250), 'Feedline', font(SERIF, 104), PAPER)
-    text(d, (80, 392), 'A calm, offline-first', font(REG, 30), '#F7E6DB')
-    text(d, (80, 432), 'RSS reader for Android', font(REG, 30), '#F7E6DB')
-    text(d, (80, 498), 'No accounts. No servers. No tracking.', font(MED, 22), INK)
-    text(d, (80, 566), 'github.com/deepakness/feedline', font(REG, 20), '#F1CFBC')
-    place(img, phone_img('reader', 240), 975, 120, angle=-8, shadow=90)
-    place(img, phone_img('timeline', 256), 700, 40, angle=6, shadow=90)
+    # Text block, vertically centred.
+    top = (H - 420) // 2
+    icon(img, PAD + 24, top, 96, border=None)
+    text(d, (PAD + 20, top + 112), 'Feedline', font(SERIF, 96), PAPER)
+    text(d, (PAD + 24, top + 246), 'A calm, offline-first', font(REG, 28), '#F7E6DB')
+    text(d, (PAD + 24, top + 284), 'RSS reader for Android', font(REG, 28), '#F7E6DB')
+    text(d, (PAD + 24, top + 344), 'No accounts. No servers. No tracking.', font(MED, 21), INK)
+    text(d, (PAD + 24, top + 396), 'github.com/deepakness/feedline', font(REG, 19), '#F1CFBC')
+    # Phones: rotated first, then sized so both fit inside the padding.
+    front = phone_img('reader', 200).rotate(-7, resample=Image.BICUBIC, expand=True)
+    back = phone_img('timeline', 210).rotate(6, resample=Image.BICUBIC, expand=True)
+    fx = W - PAD - front.width
+    fy = H - PAD - front.height + 12
+    bx = fx - back.width + 96
+    by = PAD - 12
+    place(img, back, bx, by, shadow=90)
+    place(img, front, fx, fy, shadow=90)
     return img
 
 v4().save(f'{root}/.github/social-preview.png', optimize=True)
