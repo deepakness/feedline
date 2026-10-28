@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head><title>My feeds</title></head>
+  <body>
+    <outline text="Tech" title="Tech">
+      <outline type="rss" text="The Verge" title="The Verge" xmlUrl="https://www.theverge.com/rss/index.xml" htmlUrl="https://www.theverge.com/"/>
+      <outline type="rss" text="Hacker News" xmlUrl="https://news.ycombinator.com/rss"/>
+      <outline text="Nested deeper">
+        <outline type="rss" text="Deep &amp; Feed" xmlUrl="https://deep.example.com/feed?a=1&amp;b=2"/>
+      </outline>
+    </outline>
+    <outline type="rss" text="Duplicate Verge" xmlUrl="https://www.theverge.com/rss/index.xml"/>
+    <outline type="rss" title="Title only" xmlurl="https://lower.example.com/rss"/>
+  </body>
+</opml>

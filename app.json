@@ -1,0 +1,86 @@
+{
+  "expo": {
+    "name": "Feedline",
+    "slug": "feedline",
+    "scheme": "feedline",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FAF7F2",
+    "android": {
+      "package": "com.deepak.feedline",
+      "adaptiveIcon": {
+        "backgroundColor": "#FAF7F2",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "versionCode": 10
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-sqlite",
+        {
+          "enableFTS": true
+        }
+      ],
+      "expo-sharing",
+      "expo-web-browser",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./node_modules/@expo-google-fonts/newsreader/500Medium/Newsreader_500Medium.ttf",
+            "./node_modules/@expo-google-fonts/newsreader/600SemiBold/Newsreader_600SemiBold.ttf",
+            "./node_modules/@expo-google-fonts/inter/400Regular/Inter_400Regular.ttf",
+            "./node_modules/@expo-google-fonts/inter/500Medium/Inter_500Medium.ttf",
+            "./node_modules/@expo-google-fonts/inter/600SemiBold/Inter_600SemiBold.ttf"
+          ]
+        }
+      ],
+      "expo-image",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 96,
+          "backgroundColor": "#FAF7F2"
+        }
+      ],
+      [
+        "expo-share-intent",
+        {
+          "androidIntentFilters": [
+            "text/*"
+          ],
+          "disableIOS": true
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ],
+      "./plugins/withReleaseSigning",
+      "./plugins/withAbiSplits"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "ios": {
+      "bundleIdentifier": "com.deepak.feedline"
+    },
+    "extra": {
+      "router": {
+        "asyncRoutes": {
+          "web": true
+        }
+      }
+    }
+  }
+}

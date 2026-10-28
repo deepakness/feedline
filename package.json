@@ -1,0 +1,84 @@
+{
+  "name": "feedline",
+  "version": "1.0.0",
+  "license": "MIT",
+  "main": "expo-router/entry",
+  "dependencies": {
+    "@borewit/text-codec": "^0.2.2",
+    "@expo-google-fonts/inter": "^0.4.2",
+    "@expo-google-fonts/newsreader": "^0.4.1",
+    "@mozilla/readability": "^0.6.0",
+    "@shopify/flash-list": "2.3.2",
+    "dom-serializer": "^3.1.1",
+    "domutils": "^4.0.2",
+    "expo": "~58.0.20",
+    "expo-build-properties": "~58.0.11",
+    "expo-clipboard": "~58.0.4",
+    "expo-constants": "~58.0.13",
+    "expo-crypto": "~58.0.7",
+    "expo-dev-client": "~58.0.16",
+    "expo-document-picker": "~58.0.4",
+    "expo-file-system": "~58.0.11",
+    "expo-font": "~58.0.10",
+    "expo-haptics": "~58.0.7",
+    "expo-image": "~58.0.17",
+    "expo-linking": "~58.0.14",
+    "expo-network": "~58.0.4",
+    "expo-router": "~58.0.27",
+    "expo-share-intent": "^9.0.0",
+    "expo-sharing": "~58.0.20",
+    "expo-splash-screen": "~58.0.11",
+    "expo-sqlite": "~58.0.14",
+    "expo-status-bar": "~58.0.4",
+    "expo-system-ui": "~58.0.6",
+    "expo-web-browser": "~58.0.7",
+    "fast-xml-parser": "^5.11.2",
+    "htmlparser2": "^12.0.0",
+    "lucide-react-native": "^1.62.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-native": "0.88.0",
+    "react-native-gesture-handler": "~3.3.0",
+    "react-native-pager-view": "9.0.7",
+    "react-native-reanimated": "4.7.1",
+    "react-native-safe-area-context": "~5.10.1",
+    "react-native-screens": "~4.30.0",
+    "react-native-svg": "15.16.0",
+    "react-native-webview": "14.0.1",
+    "react-native-worklets": "0.13.0",
+    "zustand": "^5.0.16"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.19.2",
+    "@types/react": "~19.3.0",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~58.0.4",
+    "jest": "^30.5.2",
+    "jest-expo": "^58.0.12",
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start --dev-client",
+    "android": "expo run:android",
+    "typecheck": "tsc --noEmit",
+    "test": "jest",
+    "lint": "expo lint",
+    "build:fonts": "python3 scripts/build-reader-fonts.py",
+    "build:apk": "bash scripts/build-apk.sh"
+  },
+  "private": true,
+  "jest": {
+    "preset": "jest-expo",
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "/fixtures/"
+    ],
+    "moduleNameMapper": {
+      "^@/(.*)$": "<rootDir>/src/$1"
+    },
+    "transformIgnorePatterns": [
+      "node_modules/(?!((jest-)?react-native|@react-native(-community)?)|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|react-navigation|@react-navigation/.*|@borewit/.*|htmlparser2|domutils|dom-serializer|domhandler|domelementtype|entities|fast-xml-parser|strnum|lucide-react-native)"
+    ]
+  }
+}

@@ -1,0 +1,31 @@
+name: Bug report
+description: Something in Feedline doesn't work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead. Screenshots help.
+    validations:
+      required: true
+  - type: input
+    id: feed
+    attributes:
+      label: Feed URL
+      description: If the problem is with a specific feed or article.
+  - type: input
+    id: version
+    attributes:
+      label: Feedline version
+      description: Settings → About.
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Phone and Android version
+      placeholder: "Pixel 7a, Android 16"
+    validations:
+      required: true

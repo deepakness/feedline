@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title type="text">Atom Blog</title>
+  <subtitle>All about atoms</subtitle>
+  <link href="https://atom.example.org/" rel="alternate" type="text/html"/>
+  <link href="https://atom.example.org/feed.atom" rel="self"/>
+  <icon>/favicon.png</icon>
+  <updated>2026-10-25T10:00:00Z</updated>
+  <entry>
+    <title type="html">Entry &lt;em&gt;one&lt;/em&gt;</title>
+    <link rel="alternate" href="/posts/one"/>
+    <id>tag:atom.example.org,2026:1</id>
+    <published>2026-10-25T10:00:00+02:00</published>
+    <author><name>Grace Hopper</name></author>
+    <content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml"><p>Inline <a href="/x">xhtml</a></p></div></content>
+  </entry>
+  <entry>
+    <title>Entry two</title>
+    <link href="https://atom.example.org/posts/two"/>
+    <id>tag:atom.example.org,2026:2</id>
+    <updated>2026-10-24T10:00:00Z</updated>
+    <summary type="html">&lt;p&gt;Summary &lt;img src="pic.png"&gt;&lt;/p&gt;</summary>
+  </entry>
+</feed>
