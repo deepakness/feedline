@@ -6,16 +6,18 @@
 
 <p>A calm, offline-first RSS reader for Android.<br>No accounts, no servers, no tracking: feeds, articles and images all live on your phone.</p>
 
+<a href="https://github.com/deepakness/feedline/releases/latest/download/feedline.apk"><img src="https://img.shields.io/github/v/release/deepakness/feedline?label=Download%20APK&logo=android&logoColor=white&style=for-the-badge&labelColor=B4532A&color=8F3F1E" alt="Download APK"></a>
+
+<p><sub>Older 32-bit phone? Get <a href="https://github.com/deepakness/feedline/releases/latest/download/feedline-armv7.apk">feedline-armv7.apk</a></sub></p>
+
+<br>
+
 <p>
   <a href="https://github.com/deepakness/feedline/releases/latest"><img src="https://img.shields.io/github/v/release/deepakness/feedline?color=B4532A" alt="Latest release"></a>
   <img src="https://img.shields.io/badge/Android-7.0%2B-3C6E47?logo=android&logoColor=white" alt="Android 7.0+">
   <a href="LICENSE"><img src="https://img.shields.io/github/license/deepakness/feedline?color=1D1B18" alt="MIT license"></a>
   <a href="https://github.com/deepakness/feedline/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/deepakness/feedline/ci.yml?branch=main&label=CI" alt="CI status"></a>
 </p>
-
-<a href="https://github.com/deepakness/feedline/releases/latest/download/feedline.apk"><img src="https://img.shields.io/github/v/release/deepakness/feedline?label=Download%20APK&logo=android&logoColor=white&style=for-the-badge&labelColor=B4532A&color=8F3F1E" alt="Download APK"></a>
-
-<p><sub>Older 32-bit phone? Get <a href="https://github.com/deepakness/feedline/releases/latest/download/feedline-armv7.apk">feedline-armv7.apk</a></sub></p>
 
 <img src=".github/screenshots/timeline.png" width="23%" alt="Timeline">
 <img src=".github/screenshots/reader.png" width="23%" alt="Reader">
