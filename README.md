@@ -26,7 +26,7 @@
 
 ## Install
 
-1. On your phone, tap **Download APK** above. It always fetches the latest version.
+1. On your phone, tap **Download APK** above, or [download feedline.apk](https://github.com/deepakness/feedline/releases/latest/download/feedline.apk). It always fetches the latest version.
 2. Open the downloaded `feedline.apk`. If Android asks, allow your browser to install apps.
 3. Open Feedline and add a feed, or import an OPML file from another reader.
 
