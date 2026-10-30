@@ -5,7 +5,7 @@
 - New package name, `com.vempus.feedline`, ahead of the Google Play release. This installs as a new app: export your feeds as OPML from the old one first
 - Removed permissions Feedline doesn't need: drawing over other apps, and old storage access
 - Settings → About links to the source code
-- Added a privacy policy
+- Added a privacy policy, linked from Settings → About
 
 ## 1.1.1 (versionCode 12)
 
