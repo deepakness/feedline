@@ -80,7 +80,7 @@ def v4():
     img = Image.new('RGB', (W, H), ACC); d = ImageDraw.Draw(img)
     # Text block, vertically centred.
     top = (H - 420) // 2
-    icon(img, PADX, top, 96, border=None)
+    icon(img, PADX, top, 96, border='#F7E6DB')
     text(d, (PADX - 4, top + 112), 'Feedline', font(SERIF, 96), PAPER)
     text(d, (PADX, top + 246), 'A calm, offline-first', font(REG, 28), '#F7E6DB')
     text(d, (PADX, top + 284), 'RSS reader for Android', font(REG, 28), '#F7E6DB')

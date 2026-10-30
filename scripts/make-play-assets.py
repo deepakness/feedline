@@ -17,7 +17,7 @@ PAD = 72
 img = Image.new('RGB', (W, H), s.ACC)
 d = ImageDraw.Draw(img)
 top = (H - 300) // 2
-s.icon(img, PAD, top, 72, border=None)
+s.icon(img, PAD, top, 72, border='#F7E6DB')
 s.text(d, (PAD - 3, top + 80), 'Feedline', s.font(s.SERIF, 80), s.PAPER)
 s.text(d, (PAD, top + 196), 'A calm, offline-first RSS reader', s.font(s.REG, 24), '#F7E6DB')
 s.text(d, (PAD, top + 244), 'Open source. No accounts. No tracking.', s.font(s.MED, 19), s.INK)
