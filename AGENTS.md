@@ -55,7 +55,7 @@ GitHub Releases is the only channel. Commit as `deepakness <me@deepakness.com>`.
 - Saved ignores "Hide read"; otherwise opened saved articles would vanish.
 - Re-applying the same route param (`/?feed=12`) needs a nonce (`at=`).
 - RN 0.88 has no InteractionManager; defer with `setTimeout`.
-- The reader WebView must not set `nestedScrollEnabled`. It makes the WebView block its parents on every touch, so the pager can't swipe (1.0.0 shipped this way).
+- No swiping between articles in the reader; the toolbar's ‹ › arrows move between them. A pager (react-native-pager-view) took over any vertical scroll that drifted a few pixels sideways, and setting `nestedScrollEnabled` on the WebView blocked it completely.
 - R8 strips classes that WorkManager creates by reflection, and the app crashes at launch. The keep rules are `extraProguardRules` in `app.json`.
 - To test background refresh, background the app, then run `adb shell cmd jobscheduler run -f com.deepak.feedline <id>`. The ID changes after each run (`dumpsys jobscheduler`). A cold start after `am kill` counts as a force-stop, so WorkManager reschedules and the forced job disappears.
 - `__tests__/refresh.test.ts` runs the real SQL on `node:sqlite`. Extend it for SQL or refresh changes.

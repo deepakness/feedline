@@ -1,10 +1,9 @@
 import { Paths } from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Bookmark, CheckCheck, CircleDot, ExternalLink, Share2, Type } from 'lucide-react-native';
+import { ArrowLeft, Bookmark, CheckCheck, ChevronLeft, ChevronRight, CircleDot, ExternalLink, Share2, Type } from 'lucide-react-native';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import PagerView from 'react-native-pager-view';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -39,7 +38,6 @@ export default function ReaderScreen() {
     return session.includes(initialId) ? session : [initialId];
   }, [initialId]);
   const [index, setIndex] = useState(() => Math.max(0, ids.indexOf(initialId)));
-  const [pagingEnabled, setPagingEnabled] = useState(true);
   const [aaOpen, setAaOpen] = useState(false);
   // Keep toasts clear of the floating toolbar (it sits 12px up and is BAR tall).
   useToastLift(BAR);
@@ -47,13 +45,8 @@ export default function ReaderScreen() {
   useEffect(() => {
     useReaderSession.setState({ lastId: currentId });
   }, [currentId]);
-  // Neighbouring pages mount once the visible one has rendered, so the first
-  // article appears as fast as possible.
-  const [loadedIds, setLoadedIds] = useState<ReadonlySet<number>>(() => new Set());
-  const onPageLoaded = useCallback((articleId: number) => {
-    setLoadedIds((prev) => (prev.has(articleId) ? prev : new Set(prev).add(articleId)));
-  }, []);
-  const neighboursReady = loadedIds.has(currentId);
+  const hasPrev = index > 0;
+  const hasNext = index < ids.length - 1;
 
   const { data: article } = useQuery(() => getArticle(currentId), [currentId], ['articles']);
 
@@ -72,8 +65,7 @@ export default function ReaderScreen() {
 
   const onMessage = useCallback(
     (msg: ReaderMessage) => {
-      if (msg.type === 'hscroll') setPagingEnabled(!msg.active);
-      else if (msg.type === 'meta') scrollState.current.titleBottom = msg.titleBottom;
+      if (msg.type === 'meta') scrollState.current.titleBottom = msg.titleBottom;
       else if (msg.type === 'scroll') {
         const s = scrollState.current;
         const dy = msg.y - s.lastY;
@@ -106,28 +98,9 @@ export default function ReaderScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.bg }}>
-      <PagerView
-        style={{ flex: 1 }}
-        initialPage={index}
-        scrollEnabled={pagingEnabled && ids.length > 1}
-        onPageSelected={(e) => setIndex(e.nativeEvent.position)}
-        offscreenPageLimit={1}
-        overdrag
-      >
-        {ids.map((articleId, i) => (
-          <View key={articleId} style={{ flex: 1 }} collapsable={false}>
-            {i === index || (neighboursReady && Math.abs(i - index) === 1) ? (
-              <ReaderPage
-                articleId={articleId}
-                active={i === index}
-                topInset={insets.top + BAR}
-                onMessage={i === index ? onMessage : undefined}
-                onLoaded={onPageLoaded}
-              />
-            ) : null}
-          </View>
-        ))}
-      </PagerView>
+      {/* One article at a time: a swipe pager stole vertical scrolls that drifted
+          sideways. The toolbar's arrows move between articles instead. */}
+      <ReaderPage key={currentId} articleId={currentId} topInset={insets.top + BAR} onMessage={onMessage} />
 
       <Animated.View style={[styles.top, { paddingTop: insets.top, backgroundColor: theme.colors.bg, borderBottomColor: theme.colors.hairline }, topStyle]}>
         <View style={styles.bar}>
@@ -158,6 +131,14 @@ export default function ReaderScreen() {
         ]}
       >
         <IconButton
+          icon={ChevronLeft}
+          label="Previous article"
+          onPress={() => setIndex((i) => Math.max(0, i - 1))}
+          disabled={!hasPrev}
+          style={!hasPrev && styles.off}
+        />
+        <View style={[styles.divider, { backgroundColor: theme.colors.hairline }]} />
+        <IconButton
           icon={Bookmark}
           label={article?.is_saved ? 'Remove from Saved' : 'Save'}
           filled={!!article?.is_saved}
@@ -176,6 +157,14 @@ export default function ReaderScreen() {
             showToast(article.is_read ? 'Marked as unread' : 'Marked as read');
           }}
         />
+        <View style={[styles.divider, { backgroundColor: theme.colors.hairline }]} />
+        <IconButton
+          icon={ChevronRight}
+          label="Next article"
+          onPress={() => setIndex((i) => Math.min(ids.length - 1, i + 1))}
+          disabled={!hasNext}
+          style={!hasNext && styles.off}
+        />
       </Animated.View>
 
       <ReaderSettingsSheet visible={aaOpen} onClose={() => setAaOpen(false)} />
@@ -185,13 +174,11 @@ export default function ReaderScreen() {
 
 type PageProps = {
   articleId: number;
-  active: boolean;
   topInset: number;
-  onMessage?: (msg: ReaderMessage) => void;
-  onLoaded: (articleId: number) => void;
+  onMessage: (msg: ReaderMessage) => void;
 };
 
-const ReaderPage = memo(function ReaderPage({ articleId, active, topInset, onMessage, onLoaded }: PageProps) {
+const ReaderPage = memo(function ReaderPage({ articleId, topInset, onMessage }: PageProps) {
   const theme = useTheme();
   const ref = useRef<WebViewHandle>(null);
   const size = useSettings((s) => s.readerSize);
@@ -216,11 +203,11 @@ const ReaderPage = memo(function ReaderPage({ articleId, active, topInset, onMes
   }, [articleId]);
 
   useEffect(() => {
-    if (active && article && !article.is_read && !markedRead.current) {
+    if (article && !article.is_read && !markedRead.current) {
       markedRead.current = true;
       setRead([article.id], true);
     }
-  }, [active, article]);
+  }, [article]);
 
   const fetchFull = useCallback(
     async (fromUser: boolean) => {
@@ -240,14 +227,14 @@ const ReaderPage = memo(function ReaderPage({ articleId, active, topInset, onMes
   // A truncated article fetches its full text as soon as it is opened, ahead of
   // the background queue.
   useEffect(() => {
-    if (!active || !article || autoFetched.current || !article.url) return;
+    if (!article || autoFetched.current || !article.url) return;
     if (article.content_status !== 'lazy' && article.content_status !== 'pending') return;
     const timer = setTimeout(() => {
       autoFetched.current = true;
       fetchFull(false);
     }, 0);
     return () => clearTimeout(timer);
-  }, [active, article, fetchFull]);
+  }, [article, fetchFull]);
 
   const html = useMemo(() => {
     if (!article) return null;
@@ -305,7 +292,7 @@ const ReaderPage = memo(function ReaderPage({ articleId, active, topInset, onMes
         return;
       }
       if (msg.type === 'notice') loadFull();
-      else onMessage?.(msg);
+      else onMessage(msg);
     },
     [onMessage, loadFull],
   );
@@ -336,10 +323,7 @@ const ReaderPage = memo(function ReaderPage({ articleId, active, topInset, onMes
           style={{ flex: 1, backgroundColor: theme.colors.bg }}
           containerStyle={{ backgroundColor: theme.colors.bg }}
           onMessage={handleMessage}
-          onLoadEnd={() => {
-            setLoaded(true);
-            onLoaded(articleId);
-          }}
+          onLoadEnd={() => setLoaded(true)}
           onShouldStartLoadWithRequest={(req) => {
             const url = req.url;
             if (url.startsWith(baseUrl) || url.startsWith('about:') || url.startsWith('data:')) return true;
@@ -356,8 +340,6 @@ const ReaderPage = memo(function ReaderPage({ articleId, active, topInset, onMes
           textZoom={100}
           overScrollMode="never"
           showsVerticalScrollIndicator={false}
-          // No nestedScrollEnabled: it makes the WebView block its parents from taking any
-          // touch, so the pager could never swipe. Wide blocks pause paging via 'hscroll'.
           setBuiltInZoomControls={false}
           cacheEnabled
           webviewDebuggingEnabled={__DEV__}
@@ -394,4 +376,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 6 },
     elevation: 4,
   },
+  divider: { width: StyleSheet.hairlineWidth, height: 24, marginHorizontal: 2 },
+  off: { opacity: 0.3 },
 });

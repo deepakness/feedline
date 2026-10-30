@@ -23,7 +23,6 @@ export type ReaderDoc = {
 export type ReaderMessage =
   | { type: 'scroll'; y: number; max: number }
   | { type: 'meta'; titleBottom: number }
-  | { type: 'hscroll'; active: boolean }
   | { type: 'notice' };
 
 function esc(s: string): string {
@@ -123,17 +122,6 @@ const BRIDGE = `
   };
   window.addEventListener('load',sendMeta);
   document.addEventListener('DOMContentLoaded',sendMeta);
-  // Tell the pager to stop paging while a finger is on a horizontally scrollable block.
-  document.addEventListener('touchstart',function(e){
-    var n=e.target;
-    while(n&&n!==document.body){
-      if(n.scrollWidth>n.clientWidth+2&&getComputedStyle(n).overflowX!=='visible'){post({type:'hscroll',active:true});return;}
-      n=n.parentElement;
-    }
-  },{passive:true});
-  var end=function(){post({type:'hscroll',active:false});};
-  document.addEventListener('touchend',end,{passive:true});
-  document.addEventListener('touchcancel',end,{passive:true});
   // Offline and the local copy is missing: show a calm placeholder, keep layout stable.
   document.addEventListener('error',function(e){
     var img=e.target;

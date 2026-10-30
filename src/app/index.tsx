@@ -197,7 +197,7 @@ export default function Timeline() {
 
   useFocusEffect(
     useCallback(() => {
-      // After swiping on in the reader, come back to the article it ended on.
+      // After moving on with the reader's arrows, come back to the article it ended on.
       const session = useReaderSession.getState();
       if (session.origin === 'timeline' && session.lastId != null) {
         const target = session.lastId;
@@ -247,31 +247,36 @@ export default function Timeline() {
       }),
     [],
   );
-  // A different view starts at its top, once its rows arrive: scrolling earlier is
-  // undone, as the list keeps an article both views share in place. The timer covers
-  // a view whose rows are identical, where no new data ever arrives.
+  // A different view gets a fresh list, so it starts at its top. It is swapped in
+  // once the view's rows arrive: scrolling the old list instead was undone by its
+  // anchoring, or left a blank gap under a stale day header. The timer covers a view
+  // whose rows are identical, where no new data ever arrives.
+  const [listKey, setListKey] = useState(filterKey);
   const shownKey = useRef(filterKey);
-  const topPending = useRef<{ from: typeof latest; timer: ReturnType<typeof setTimeout> } | null>(null);
-  const scrollTopNow = useCallback(() => {
-    if (!topPending.current) return;
-    clearTimeout(topPending.current.timer);
-    topPending.current = null;
-    listRef.current?.scrollToOffset({ offset: 0, animated: false });
+  const viewPending = useRef<{ key: string; from: typeof latest; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const showView = useCallback(() => {
+    const pending = viewPending.current;
+    if (!pending) return;
+    clearTimeout(pending.timer);
+    viewPending.current = null;
+    scrollRef.current = { y: 0, away: false, up: false };
+    setScrollFlags({ away: false, up: false });
+    setNewAbove(false);
+    setListKey(pending.key);
   }, []);
   useEffect(() => {
     if (shownKey.current === filterKey) return;
     shownKey.current = filterKey;
-    if (topPending.current) clearTimeout(topPending.current.timer);
-    topPending.current = { from: latest, timer: setTimeout(scrollTopNow, 800) };
+    if (viewPending.current) clearTimeout(viewPending.current.timer);
+    viewPending.current = { key: filterKey, from: latest, timer: setTimeout(showView, 800) };
     // Only a change of view starts this; `latest` is read as the rows it replaces.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterKey, scrollTopNow]);
+  }, [filterKey, showView]);
   useEffect(() => {
-    // A few frames' delay lets the list lay out the new rows (and its anchoring) first.
-    if (topPending.current && latest !== topPending.current.from) setTimeout(scrollTopNow, 60);
-  }, [latest, scrollTopNow]);
+    if (viewPending.current && latest !== viewPending.current.from) showView();
+  }, [latest, showView]);
   useEffect(() => () => {
-    if (topPending.current) clearTimeout(topPending.current.timer);
+    if (viewPending.current) clearTimeout(viewPending.current.timer);
   }, []);
   const scrollToTop = useCallback(() => {
     listRef.current?.scrollToOffset({ offset: 0, animated: true });
@@ -308,7 +313,7 @@ export default function Timeline() {
   }, [articles]);
   const openArticle = useCallback(
     (item: ArticleListItem) => {
-      // The reader pages through a window around the tapped article.
+      // The reader's arrows move through a window of the list around the tapped article.
       const ids = (articlesRef.current ?? []).map((a) => a.id);
       const at = Math.max(0, ids.indexOf(item.id));
       openedIdRef.current = item.id;
@@ -434,6 +439,7 @@ export default function Timeline() {
       ) : (
         <View style={{ flex: 1 }}>
           <FlashList
+            key={listKey}
             ref={listRef}
             data={rows}
             renderItem={renderItem}

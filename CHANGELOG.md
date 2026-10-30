@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.1 (versionCode 12)
+
+- Removed swiping between articles in the reader: scrolls that drifted sideways turned into swipes
+- Previous and next arrows in the reader's toolbar
+- Fixed a blank gap at the top of the list after switching views
+
 ## 1.1.0 (versionCode 11)
 
 - Fixed: swiping between articles in the reader never worked
