@@ -44,7 +44,7 @@
 Every release is signed with the same key. Check it with `apksigner verify --print-certs feedline.apk` or [AppVerifier](https://github.com/soupslurpr/AppVerifier):
 
 ```
-com.deepak.feedline
+com.vempus.feedline
 53:B4:1E:C6:77:80:F0:35:78:59:BA:C1:58:72:BE:9F:CD:E9:89:C1:0F:F6:AC:21:75:82:BA:CF:63:02:2E:1D
 ```
 

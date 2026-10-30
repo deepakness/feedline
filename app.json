@@ -3,20 +3,25 @@
     "name": "Feedline",
     "slug": "feedline",
     "scheme": "feedline",
-    "version": "1.1.1",
+    "version": "1.1.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "backgroundColor": "#FAF7F2",
     "android": {
-      "package": "com.deepak.feedline",
+      "package": "com.vempus.feedline",
       "adaptiveIcon": {
         "backgroundColor": "#FAF7F2",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "versionCode": 12
+      "versionCode": 13,
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "plugins": [
       "expo-router",
@@ -75,7 +80,7 @@
       "typedRoutes": true
     },
     "ios": {
-      "bundleIdentifier": "com.deepak.feedline"
+      "bundleIdentifier": "com.vempus.feedline"
     },
     "extra": {
       "router": {

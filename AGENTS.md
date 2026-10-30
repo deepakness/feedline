@@ -1,6 +1,6 @@
 # Feedline
 
-Offline-first RSS reader for Android (`com.deepak.feedline`), built with Expo and React Native. No backend; light theme only.
+Offline-first RSS reader for Android (`com.vempus.feedline`), built with Expo and React Native. No backend; light theme only.
 
 ## Expo
 
@@ -28,7 +28,9 @@ GitHub Releases is the only channel. Commit as `deepakness <me@deepakness.com>`.
 2. Add a `CHANGELOG.md` entry.
 3. Run the checks, build, and test on the phone. Then commit and push; CI must pass.
 4. Run `git tag vX.Y.Z && git push origin vX.Y.Z`, then `gh release create vX.Y.Z dist/release/* --title "Feedline X.Y.Z" --notes-file <notes> --latest`.
+5. Run `npm run build:aab` and upload `dist/play/feedline.aab` to the Play Console. The AAB never goes on GitHub.
 
+- Play: the app is on the Vempus organisation account. Play App Signing holds a copy of the Feedline key, so Play and GitHub builds update each other. AABs are signed with a separate upload key (`FEEDLINE_UPLOAD_*` in `~/.gradle/gradle.properties`); the script rejects any other.
 - Asset names are fixed. The README links `releases/latest/download/feedline.apk` and `feedline-armv7.apk`.
 - Users read release notes in the app (Settings → Follow Feedline updates subscribes to `releases.atom`), so write them for people.
 - Rewrite history only when the owner asks: one orphan commit, force-push, then delete the old release, tag and CI runs.
@@ -57,5 +59,5 @@ GitHub Releases is the only channel. Commit as `deepakness <me@deepakness.com>`.
 - RN 0.88 has no InteractionManager; defer with `setTimeout`.
 - No swiping between articles in the reader; the toolbar's ‹ › arrows move between them. A pager (react-native-pager-view) took over any vertical scroll that drifted a few pixels sideways, and setting `nestedScrollEnabled` on the WebView blocked it completely.
 - R8 strips classes that WorkManager creates by reflection, and the app crashes at launch. The keep rules are `extraProguardRules` in `app.json`.
-- To test background refresh, background the app, then run `adb shell cmd jobscheduler run -f com.deepak.feedline <id>`. The ID changes after each run (`dumpsys jobscheduler`). A cold start after `am kill` counts as a force-stop, so WorkManager reschedules and the forced job disappears.
+- To test background refresh, background the app, then run `adb shell cmd jobscheduler run -f com.vempus.feedline <id>`. The ID changes after each run (`dumpsys jobscheduler`). A cold start after `am kill` counts as a force-stop, so WorkManager reschedules and the forced job disappears.
 - `__tests__/refresh.test.ts` runs the real SQL on `node:sqlite`. Extend it for SQL or refresh changes.

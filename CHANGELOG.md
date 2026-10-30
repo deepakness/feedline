@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.2 (versionCode 13)
+
+- New package name, `com.vempus.feedline`, ahead of the Google Play release. This installs as a new app: export your feeds as OPML from the old one first
+- Removed permissions Feedline doesn't need: drawing over other apps, and old storage access
+- Settings → About links to the source code
+- Added a privacy policy
+
 ## 1.1.1 (versionCode 12)
 
 - Removed swiping between articles in the reader: scrolls that drifted sideways turned into swipes

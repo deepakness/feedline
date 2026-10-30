@@ -25,7 +25,8 @@ import { Download, Share2, Trash2 } from 'lucide-react-native';
 
 // GitHub's Atom feed of Feedline releases, so updates arrive like any other article.
 const RELEASES_FEED_URL = 'https://github.com/deepakness/feedline/releases.atom';
-const RELEASES_PAGE_URL = 'https://github.com/deepakness/feedline/releases';
+const REPO_URL = 'https://github.com/deepakness/feedline';
+const RELEASES_PAGE_URL = `${REPO_URL}/releases`;
 
 function formatBytes(n: number): string {
   if (n < 1024 * 1024) return `${Math.max(1, Math.round(n / 1024))} KB`;
@@ -219,6 +220,8 @@ export default function SettingsScreen() {
           value={`v${Constants.expoConfig?.version ?? '1.0.0'}`}
           onPress={() => openInBrowser(RELEASES_PAGE_URL)}
         />
+        <Divider inset={theme.space.gutter} />
+        <Row label="Source code" detail="Free and open source, under the MIT license" onPress={() => openInBrowser(REPO_URL)} />
         {updatesFeed !== undefined ? (
           <>
             <Divider inset={theme.space.gutter} />

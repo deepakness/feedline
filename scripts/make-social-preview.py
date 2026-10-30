@@ -97,4 +97,5 @@ def v4():
     place(img, front, fx, fy, shadow=90)
     return img
 
-v4().save(f'{root}/.github/social-preview.png', optimize=True)
+if __name__ == '__main__':
+    v4().save(f'{root}/.github/social-preview.png', optimize=True)

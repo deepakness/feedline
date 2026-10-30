@@ -10,16 +10,18 @@ const GRADLE_PROPERTIES = {
 
 // Keystore path, passwords and alias live in ~/.gradle/gradle.properties, never in
 // this repo. Without them a release build falls back to the debug key, which
-// scripts/build-apk.sh refuses to ship.
+// scripts/build-apk.sh refuses to ship. scripts/build-aab.sh passes -PfeedlineUpload
+// to sign with the Play upload key (FEEDLINE_UPLOAD_*) instead.
 const STORE_FILE_PROPERTY = 'FEEDLINE_RELEASE_STORE_FILE';
 
 const RELEASE_SIGNING_CONFIG = `
         release {
-            if (project.hasProperty('${STORE_FILE_PROPERTY}')) {
-                storeFile file(project.property('${STORE_FILE_PROPERTY}'))
-                storePassword project.property('FEEDLINE_RELEASE_STORE_PASSWORD')
-                keyAlias project.property('FEEDLINE_RELEASE_KEY_ALIAS')
-                keyPassword project.property('FEEDLINE_RELEASE_KEY_PASSWORD')
+            def signingKey = project.hasProperty('feedlineUpload') ? 'FEEDLINE_UPLOAD' : 'FEEDLINE_RELEASE'
+            if (project.hasProperty("\${signingKey}_STORE_FILE")) {
+                storeFile file(project.property("\${signingKey}_STORE_FILE"))
+                storePassword project.property("\${signingKey}_STORE_PASSWORD")
+                keyAlias project.property("\${signingKey}_KEY_ALIAS")
+                keyPassword project.property("\${signingKey}_KEY_PASSWORD")
             }
         }
 `;
