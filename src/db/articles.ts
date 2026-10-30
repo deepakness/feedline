@@ -15,7 +15,10 @@ function whereFor(filter: ArticleFilter): { sql: string; params: (string | numbe
     clauses.push('a.feed_id = ?');
     params.push(filter.feedId);
   }
-  if (filter.hideRead) clauses.push('a.is_read = 0');
+  if (filter.hideRead && filter.keepReadSince != null) {
+    clauses.push('(a.is_read = 0 OR a.read_at >= ?)');
+    params.push(filter.keepReadSince);
+  } else if (filter.hideRead) clauses.push('a.is_read = 0');
   return { sql: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', params };
 }
 
@@ -77,7 +80,7 @@ export async function setSaved(id: number, saved: boolean) {
  * at or before `beforeTs`. Returns the ids changed so the caller can offer undo.
  */
 export async function markAllRead(filter: ArticleFilter, beforeTs?: number): Promise<number[]> {
-  const where = whereFor({ ...filter, hideRead: true });
+  const where = whereFor({ ...filter, hideRead: true, keepReadSince: undefined });
   const extra = beforeTs != null ? ' AND a.published_at <= ?' : '';
   const params = beforeTs != null ? [...where.params, beforeTs] : where.params;
   const rows = await db().getAllAsync<{ id: number }>(
@@ -126,18 +129,20 @@ export function toFtsQuery(input: string): string | null {
   return terms.map((t) => `"${t}"*`).join(' ');
 }
 
-export function searchArticles(input: string, limit = 100): Promise<SearchHit[]> {
+/** `filter` narrows the search to one feed or to Saved; read state is ignored. */
+export function searchArticles(input: string, filter?: ArticleFilter, limit = 100): Promise<SearchHit[]> {
   const query = toFtsQuery(input);
   if (!query) return Promise.resolve([]);
+  const scope = filter ? whereFor({ ...filter, hideRead: false }) : { sql: '', params: [] };
   return db().getAllAsync<SearchHit>(
     `SELECT ${LIST_COLUMNS},
        snippet(articles_fts, 2, '\u0001', '\u0002', '…', 18) AS snippet
      FROM articles_fts
      JOIN articles a ON a.id = articles_fts.rowid
      JOIN feeds f ON f.id = a.feed_id
-     WHERE articles_fts MATCH ?
+     WHERE articles_fts MATCH ?${scope.sql.replace(/^WHERE/, ' AND')}
      ORDER BY bm25(articles_fts, 8.0, 2.0, 1.0)
      LIMIT ?`,
-    [query, limit],
+    [query, ...scope.params, limit],
   );
 }

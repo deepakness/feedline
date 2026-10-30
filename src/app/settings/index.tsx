@@ -13,16 +13,19 @@ import { db, writeTransaction } from '@/db/client';
 import { notifyChangeNow } from '@/db/bus';
 import { findFeedByUrl, insertFeed, renameFeed, setFullTextMode } from '@/db/feeds';
 import { useQuery } from '@/db/useQuery';
+import { syncBackgroundRefresh } from '@/feeds/background';
 import { imagesRoot, storageUsage } from '@/feeds/images';
 import { refreshOne } from '@/feeds/refresh';
 import { applyRetention } from '@/feeds/retention';
+import { openInBrowser } from '@/lib/articleActions';
 import { saveOpmlToDevice, shareOpml } from '@/opml/io';
-import { useSettings, type ImageMode, type ListStyle, type RetentionDays } from '@/state/settings';
+import { useSettings, type FeedSort, type ImageMode, type ListStyle, type RetentionDays } from '@/state/settings';
 import { useTheme } from '@/theme';
 import { Download, Share2, Trash2 } from 'lucide-react-native';
 
 // GitHub's Atom feed of Feedline releases, so updates arrive like any other article.
 const RELEASES_FEED_URL = 'https://github.com/deepakness/feedline/releases.atom';
+const RELEASES_PAGE_URL = 'https://github.com/deepakness/feedline/releases';
 
 function formatBytes(n: number): string {
   if (n < 1024 * 1024) return `${Math.max(1, Math.round(n / 1024))} KB`;
@@ -45,7 +48,7 @@ export default function SettingsScreen() {
   const followUpdates = async () => {
     setFollowing(true);
     try {
-      const id = await insertFeed({ url: RELEASES_FEED_URL, siteUrl: 'https://github.com/deepakness/feedline/releases' });
+      const id = await insertFeed({ url: RELEASES_FEED_URL, siteUrl: RELEASES_PAGE_URL });
       // A custom title survives refreshes, which would rename it "Release notes from feedline".
       await renameFeed(id, 'Feedline updates');
       // Release notes are complete in the feed; fetching the GitHub page would only add clutter.
@@ -56,6 +59,15 @@ export default function SettingsScreen() {
       showToast('Could not follow updates');
     } finally {
       setFollowing(false);
+    }
+  };
+
+  const setBackgroundRefresh = async (enabled: boolean) => {
+    s.set({ backgroundRefresh: enabled });
+    const ok = await syncBackgroundRefresh(enabled).catch(() => false);
+    if (!ok) {
+      s.set({ backgroundRefresh: false });
+      showToast('Android isn’t allowing background work for Feedline');
     }
   };
 
@@ -119,12 +131,29 @@ export default function SettingsScreen() {
           onChange={(v) => s.set({ listStyle: v })}
         />
         <Row label="Hide read articles" right={<Switch label="Hide read articles" value={s.hideRead} onValueChange={(v) => s.set({ hideRead: v })} />} />
+        <Text variant="body" style={{ paddingHorizontal: theme.space.gutter, paddingTop: 14, paddingBottom: 10 }}>
+          Sort feeds by
+        </Text>
+        <Segmented<FeedSort>
+          options={[
+            { label: 'Name', value: 'name' },
+            { label: 'Unread', value: 'unread' },
+          ]}
+          value={s.feedSort}
+          onChange={(v) => s.set({ feedSort: v })}
+        />
 
         <SectionTitle>Refreshing</SectionTitle>
         <Row
           label="Refresh when opening the app"
           detail="Only if the last refresh was over an hour ago"
           right={<Switch label="Refresh when opening the app" value={s.refreshOnOpen} onValueChange={(v) => s.set({ refreshOnOpen: v })} />}
+        />
+        <Divider inset={theme.space.gutter} />
+        <Row
+          label="Refresh in the background"
+          detail="Every few hours, when Android allows. New articles are waiting when you open the app."
+          right={<Switch label="Refresh in the background" value={s.backgroundRefresh} onValueChange={setBackgroundRefresh} />}
         />
         <Divider inset={theme.space.gutter} />
         <Row
@@ -184,7 +213,12 @@ export default function SettingsScreen() {
         <Row label="Manage feeds" onPress={() => router.push('/feeds')} />
 
         <SectionTitle>About</SectionTitle>
-        <Row label="Feedline" value={`v${Constants.expoConfig?.version ?? '1.0.0'}`} />
+        <Row
+          label="Feedline"
+          detail="Release notes and downloads"
+          value={`v${Constants.expoConfig?.version ?? '1.0.0'}`}
+          onPress={() => openInBrowser(RELEASES_PAGE_URL)}
+        />
         {updatesFeed !== undefined ? (
           <>
             <Divider inset={theme.space.gutter} />

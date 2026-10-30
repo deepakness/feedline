@@ -1,7 +1,8 @@
-import { FlashList } from '@shopify/flash-list';
+import { FlashList, type FlashListRef } from '@shopify/flash-list';
 import * as Haptics from 'expo-haptics';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
+  ArrowUp,
   Bookmark,
   BookmarkMinus,
   CheckCheck,
@@ -21,8 +22,17 @@ import {
   Share2,
 } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshControl, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming, cancelAnimation, Easing } from 'react-native-reanimated';
+import { BackHandler, View, useWindowDimensions, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
+import Animated, {
+  FadeIn,
+  FadeOut,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+  cancelAnimation,
+  Easing,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { ActionSheet, type SheetAction } from '@/components/ActionSheet';
@@ -43,6 +53,7 @@ import { refreshFeeds } from '@/feeds/refresh';
 import { openInBrowser, shareArticle } from '@/lib/articleActions';
 import { setUserBusy } from '@/lib/idle';
 import { agoLabel, dayLabel, startOfDay } from '@/lib/time';
+import { clearKeptRead, useReadKeep } from '@/state/readKeep';
 import { useReaderSession } from '@/state/readerSession';
 import { useRefreshStore } from '@/state/refreshStore';
 import { settings, useSettings } from '@/state/settings';
@@ -51,11 +62,14 @@ import { useTheme } from '@/theme';
 type Row = { type: 'day'; key: string; label: string } | { type: 'article'; key: string; item: ArticleListItem };
 
 const PAGE = 250;
+/** Articles read before the app started are never kept by "Hide read". */
+const SESSION_START = Date.now();
 
 export default function Timeline() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { height: screenHeight } = useWindowDimensions();
   const hideRead = useSettings((s) => s.hideRead);
   const listStyle = useSettings((s) => s.listStyle);
   const lastRefreshAt = useSettings((s) => s.lastRefreshAt);
@@ -64,6 +78,7 @@ export default function Timeline() {
   const refreshDone = useRefreshStore((s) => s.done);
   const refreshTotal = useRefreshStore((s) => s.total);
   const pendingOffline = useRefreshStore((s) => s.pendingOffline);
+  const refreshedAt = useRefreshStore((s) => s.lastSummary?.finishedAt ?? 0);
 
   // Other screens can open the timeline on one feed (`/?feed=12&at=…`); `at` makes a
   // repeat request for the same feed count as new after the user picked another view.
@@ -80,7 +95,6 @@ export default function Timeline() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [contextItem, setContextItem] = useState<ArticleListItem | null>(null);
-  const [pulling, setPulling] = useState(false);
 
   const { data: feeds } = useQuery(listFeedSummaries, [], ['articles', 'feeds']);
   // If the chosen feed was unsubscribed, fall back to everything.
@@ -102,7 +116,22 @@ export default function Timeline() {
   const [page, setPage] = useState({ key: filterKey, limit: PAGE });
   const limit = page.key === filterKey ? page.limit : PAGE;
 
-  const { data: latest, loading } = useQuery(() => listArticles(filter, limit), [filter, limit], ['articles', 'feeds']);
+  // With "Hide read", what you read stays listed until the next refresh (see readKeep).
+  const clearedAt = useReadKeep((s) => s.clearedAt);
+  useEffect(
+    () =>
+      useSettings.subscribe((s, prev) => {
+        if (s.hideRead && !prev.hideRead) clearKeptRead();
+      }),
+    [],
+  );
+  const keepSince = Math.max(SESSION_START, refreshedAt, clearedAt);
+  const listFilter: ArticleFilter = useMemo(
+    () => (filter.hideRead ? { ...filter, keepReadSince: keepSince } : filter),
+    [filter, keepSince],
+  );
+
+  const { data: latest, loading } = useQuery(() => listArticles(listFilter, limit), [listFilter, limit], ['articles', 'feeds']);
   // While the list is being dragged or flung, it keeps showing the rows it had when
   // the gesture began; updates land once it settles, so nothing shifts under the finger.
   const [held, setHeld] = useState<typeof latest | null>(null);
@@ -157,6 +186,99 @@ export default function Timeline() {
 
   const stickyIndices = useMemo(() => rows.flatMap((r, i) => (r.type === 'day' ? [i] : [])), [rows]);
 
+  const listRef = useRef<FlashListRef<Row>>(null);
+  const rowsRef = useRef(rows);
+  const selectionRef = useRef(selection);
+  useEffect(() => {
+    rowsRef.current = rows;
+    selectionRef.current = selection;
+  });
+  const openedIdRef = useRef<number | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      // After swiping on in the reader, come back to the article it ended on.
+      const session = useReaderSession.getState();
+      if (session.origin === 'timeline' && session.lastId != null) {
+        const target = session.lastId;
+        useReaderSession.setState({ origin: null, lastId: null });
+        const index = rowsRef.current.findIndex((r) => r.type === 'article' && r.item.id === target);
+        if (target !== openedIdRef.current && index >= 0) {
+          listRef.current?.scrollToIndex({ index, animated: false, viewPosition: 0.35 });
+        }
+      }
+      // Back from one feed or Saved returns to All articles before leaving the app.
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+        if (selectionRef.current.kind === 'all') return false;
+        setSelection({ kind: 'all' });
+        return true;
+      });
+      return () => sub.remove();
+    }, []),
+  );
+
+  // A floating button back to the top: shown when scrolling up from far down, or
+  // when a refresh brought new articles while the top was out of view.
+  const scrollRef = useRef({ y: 0, away: false, up: false });
+  const [scrollFlags, setScrollFlags] = useState({ away: false, up: false });
+  const [newAbove, setNewAbove] = useState(false);
+  const onScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const s = scrollRef.current;
+      const y = e.nativeEvent.contentOffset.y;
+      const dy = y - s.y;
+      s.y = y;
+      const away = y > screenHeight * 1.5;
+      const up = dy < -8 ? true : dy > 8 ? false : s.up;
+      if (away === s.away && up === s.up) return;
+      s.away = away;
+      s.up = up;
+      setScrollFlags({ away, up });
+      if (!away) setNewAbove(false);
+    },
+    [screenHeight],
+  );
+  useEffect(
+    () =>
+      useRefreshStore.subscribe((state, prev) => {
+        if (state.lastSummary === prev.lastSummary || !state.lastSummary?.newArticles) return;
+        // Only All articles is sure to list them.
+        if (scrollRef.current.away && selectionRef.current.kind === 'all') setNewAbove(true);
+      }),
+    [],
+  );
+  // A different view starts at its top, once its rows arrive: scrolling earlier is
+  // undone, as the list keeps an article both views share in place. The timer covers
+  // a view whose rows are identical, where no new data ever arrives.
+  const shownKey = useRef(filterKey);
+  const topPending = useRef<{ from: typeof latest; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const scrollTopNow = useCallback(() => {
+    if (!topPending.current) return;
+    clearTimeout(topPending.current.timer);
+    topPending.current = null;
+    listRef.current?.scrollToOffset({ offset: 0, animated: false });
+  }, []);
+  useEffect(() => {
+    if (shownKey.current === filterKey) return;
+    shownKey.current = filterKey;
+    if (topPending.current) clearTimeout(topPending.current.timer);
+    topPending.current = { from: latest, timer: setTimeout(scrollTopNow, 800) };
+    // Only a change of view starts this; `latest` is read as the rows it replaces.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterKey, scrollTopNow]);
+  useEffect(() => {
+    // A few frames' delay lets the list lay out the new rows (and its anchoring) first.
+    if (topPending.current && latest !== topPending.current.from) setTimeout(scrollTopNow, 60);
+  }, [latest, scrollTopNow]);
+  useEffect(() => () => {
+    if (topPending.current) clearTimeout(topPending.current.timer);
+  }, []);
+  const scrollToTop = useCallback(() => {
+    listRef.current?.scrollToOffset({ offset: 0, animated: true });
+    setNewAbove(false);
+  }, []);
+  const showTopButton = scrollFlags.away && (scrollFlags.up || newAbove);
+
   const doRefresh = useCallback(async () => {
     if (!feeds?.length) {
       router.push('/feeds/add');
@@ -179,15 +301,6 @@ export default function Timeline() {
     }
   }, [feeds, router]);
 
-  const onPull = useCallback(async () => {
-    setPulling(true);
-    try {
-      await doRefresh();
-    } finally {
-      setPulling(false);
-    }
-  }, [doRefresh]);
-
   // Read through a ref so the callback, and with it every memoized row, stays stable.
   const articlesRef = useRef(articles);
   useEffect(() => {
@@ -198,7 +311,8 @@ export default function Timeline() {
       // The reader pages through a window around the tapped article.
       const ids = (articlesRef.current ?? []).map((a) => a.id);
       const at = Math.max(0, ids.indexOf(item.id));
-      useReaderSession.setState({ ids: ids.slice(Math.max(0, at - 100), at + 100) });
+      openedIdRef.current = item.id;
+      useReaderSession.setState({ ids: ids.slice(Math.max(0, at - 100), at + 100), origin: 'timeline', lastId: item.id });
       router.push({ pathname: '/article/[id]', params: { id: String(item.id) } });
     },
     [router],
@@ -211,6 +325,7 @@ export default function Timeline() {
         showToast('Nothing unread here');
         return;
       }
+      clearKeptRead();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
       showToast(`Marked ${ids.length} as read`, { action: { label: 'Undo', onPress: () => markUnread(ids) } });
     },
@@ -317,53 +432,81 @@ export default function Timeline() {
           <Button label="Import OPML" icon={FileUp} kind="secondary" onPress={() => router.push('/settings/opml-import')} />
         </EmptyState>
       ) : (
-        <FlashList
-          data={rows}
-          renderItem={renderItem}
-          keyExtractor={(r) => r.key}
-          getItemType={(r) => (r.type === 'day' ? 'day' : listStyle)}
-          stickyHeaderIndices={stickyIndices}
-          onEndReached={() => {
-            if ((articles?.length ?? 0) >= limit) setPage({ key: filterKey, limit: limit + PAGE });
-          }}
-          onEndReachedThreshold={0.6}
-          drawDistance={600}
-          onScrollBeginDrag={holdRows}
-          // A drag that ends without a fling settles right away; a fling settles at its end.
-          onScrollEndDrag={() => releaseRows(250)}
-          onMomentumScrollBegin={holdRows}
-          onMomentumScrollEnd={() => releaseRows(0)}
-          contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
-          refreshControl={
-            <RefreshControl
-              refreshing={pulling}
-              onRefresh={onPull}
-              colors={[theme.colors.accent]}
-              progressBackgroundColor={theme.colors.surface}
-              // The pinned day header is drawn over the list, so the spinner starts below it.
-              progressViewOffset={stickyIndices.length ? DAY_HEADER_HEIGHT : 0}
-            />
-          }
-          ListEmptyComponent={
-            loading ? null : (
-              <EmptyState
-                mark={selection.kind === 'saved' ? '☆' : '❦'}
-                title={selection.kind === 'saved' ? 'Nothing saved yet' : hideRead ? 'You’re all caught up' : 'No articles yet'}
-                body={
-                  selection.kind === 'saved'
-                    ? 'Long-press an article, or tap the bookmark while reading, to keep it here. Saved articles are never cleaned up.'
-                    : hideRead
-                      ? 'Every article here has been read.'
-                      : 'Pull down to check for new articles.'
-                }
+        <View style={{ flex: 1 }}>
+          <FlashList
+            ref={listRef}
+            data={rows}
+            renderItem={renderItem}
+            keyExtractor={(r) => r.key}
+            getItemType={(r) => (r.type === 'day' ? 'day' : listStyle)}
+            stickyHeaderIndices={stickyIndices}
+            onEndReached={() => {
+              if ((articles?.length ?? 0) >= limit) setPage({ key: filterKey, limit: limit + PAGE });
+            }}
+            onEndReachedThreshold={0.6}
+            drawDistance={600}
+            onScrollBeginDrag={holdRows}
+            // A drag that ends without a fling settles right away; a fling settles at its end.
+            onScrollEndDrag={() => releaseRows(250)}
+            onMomentumScrollBegin={holdRows}
+            onMomentumScrollEnd={() => releaseRows(0)}
+            onScroll={onScroll}
+            contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}
+            ListEmptyComponent={
+              loading ? null : (
+                <EmptyState
+                  mark={selection.kind === 'saved' ? '☆' : '❦'}
+                  title={selection.kind === 'saved' ? 'Nothing saved yet' : hideRead ? 'You’re all caught up' : 'No articles yet'}
+                  body={
+                    selection.kind === 'saved'
+                      ? 'Long-press an article, or tap the bookmark while reading, to keep it here. Saved articles are never cleaned up.'
+                      : hideRead
+                        ? 'Every article here has been read.'
+                        : 'Tap Refresh to check for new articles.'
+                  }
+                >
+                  {selection.kind === 'saved' ? null : hideRead ? (
+                    <Button label="Show read articles" kind="secondary" onPress={() => setSettings({ hideRead: false })} />
+                  ) : (
+                    <Button label="Refresh" icon={RotateCw} kind="secondary" loading={running} onPress={doRefresh} />
+                  )}
+                </EmptyState>
+              )
+            }
+          />
+          {showTopButton ? (
+            <Animated.View
+              entering={FadeIn.duration(160)}
+              exiting={FadeOut.duration(160)}
+              style={{ position: 'absolute', top: DAY_HEADER_HEIGHT + 8, alignSelf: 'center' }}
+            >
+              <Pressable
+                onPress={scrollToTop}
+                accessibilityRole="button"
+                accessibilityLabel={newAbove ? 'New articles. Scroll to top' : 'Back to top'}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6,
+                  height: 36,
+                  paddingHorizontal: 14,
+                  borderRadius: 18,
+                  backgroundColor: theme.colors.ink,
+                  shadowColor: '#000',
+                  shadowOpacity: 0.18,
+                  shadowRadius: 12,
+                  shadowOffset: { width: 0, height: 4 },
+                  elevation: 4,
+                }}
               >
-                {hideRead && selection.kind !== 'saved' ? (
-                  <Button label="Show read articles" kind="secondary" onPress={() => setSettings({ hideRead: false })} />
-                ) : null}
-              </EmptyState>
-            )
-          }
-        />
+                <ArrowUp size={16} color={theme.colors.bg} strokeWidth={2} />
+                <Text variant="metaStrong" style={{ color: theme.colors.bg }}>
+                  {newAbove ? 'New articles' : 'Back to top'}
+                </Text>
+              </Pressable>
+            </Animated.View>
+          ) : null}
+        </View>
       )}
 
       <FeedPickerSheet

@@ -60,7 +60,7 @@ export async function refreshFeeds(feedIds?: number[]): Promise<RefreshSummary |
 
     // An import refreshes only the new feeds, but still counts as the first update.
     if (!feedIds || feeds.length === all.length || !settings.get().lastRefreshAt) settings.set({ lastRefreshAt: Date.now() });
-    summary = { newArticles: newIds.length, failedFeeds: failed, finishedAt: Date.now() };
+    summary = { newArticles: newIds.length, feeds: feeds.length, failedFeeds: failed, finishedAt: Date.now() };
     store.setState({ running: false, lastSummary: summary });
   } finally {
     running = false;

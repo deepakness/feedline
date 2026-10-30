@@ -1,6 +1,7 @@
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
 import { AlertCircle, Plus } from 'lucide-react-native';
+import { useMemo } from 'react';
 import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -12,17 +13,20 @@ import { Divider } from '@/components/Misc';
 import { Pressable } from '@/components/Pressable';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { Text } from '@/components/Text';
-import { listFeedSummaries } from '@/db/feeds';
+import { listFeedSummaries, sortFeeds } from '@/db/feeds';
 import { useQuery } from '@/db/useQuery';
 import { agoLabel } from '@/lib/time';
 import { hostOf } from '@/lib/url';
+import { useSettings } from '@/state/settings';
 import { useTheme } from '@/theme';
 
 export default function FeedsScreen() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const feedSort = useSettings((s) => s.feedSort);
   const { data: feeds } = useQuery(listFeedSummaries, [], ['feeds', 'articles']);
+  const sorted = useMemo(() => sortFeeds(feeds ?? [], feedSort), [feeds, feedSort]);
   const failing = feeds?.filter((f) => f.last_error).length ?? 0;
 
   return (
@@ -43,7 +47,7 @@ export default function FeedsScreen() {
         </EmptyState>
       ) : (
         <FlashList
-          data={feeds ?? []}
+          data={sorted}
           keyExtractor={(f) => String(f.id)}
           ItemSeparatorComponent={() => <Divider inset={theme.space.gutter + 44} />}
           contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}

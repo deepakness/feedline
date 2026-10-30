@@ -51,7 +51,9 @@ function ArticleRowImpl({ item, variant, onPress, onLongPress, showFeed }: Props
   const styles = useStyles(makeStyles);
   const theme = useTheme();
   const read = !!item.is_read;
-  const titleColor = read ? theme.colors.inkSecondary : theme.colors.ink;
+  // Read rows are dimmed as a whole (title, meta, excerpt and image), so they
+  // stand apart from unread ones at a glance.
+  const dim = read && styles.read;
   const a11y = `${item.title}. ${item.feed_name}. ${read ? 'Read' : 'Unread'}${item.is_saved ? ', saved' : ''}`;
 
   // A plain native Pressable: rows carry no per-row animation or gesture state,
@@ -73,9 +75,9 @@ function ArticleRowImpl({ item, variant, onPress, onLongPress, showFeed }: Props
 
   if (variant === 'compact') {
     return (
-      <Pressable {...press} style={pressed(styles.compact)}>
+      <Pressable {...press} style={pressed([styles.compact, dim])}>
         <Meta item={item} showFeed={showFeed} />
-        <Text variant="listTitleCompact" numberOfLines={2} style={[styles.compactTitle, { color: titleColor }]}>
+        <Text variant="listTitleCompact" numberOfLines={2} style={styles.compactTitle}>
           {item.title}
         </Text>
       </Pressable>
@@ -86,13 +88,13 @@ function ArticleRowImpl({ item, variant, onPress, onLongPress, showFeed }: Props
     return (
       <Pressable {...press} style={styles.cardOuter}>
         {({ pressed: isPressed }) => (
-        <View style={[styles.card, isPressed && { backgroundColor: theme.colors.surfaceSunken }]}>
+        <View style={[styles.card, dim, isPressed && { backgroundColor: theme.colors.surfaceSunken }]}>
           {item.thumb_path ? (
             <Image source={{ uri: item.thumb_path }} style={styles.cardImage} contentFit="cover" recyclingKey={String(item.id)} cachePolicy="memory-disk" />
           ) : null}
           <View style={styles.cardBody}>
             <Meta item={item} showFeed={showFeed} />
-            <Text variant="title" numberOfLines={3} style={{ color: titleColor, marginTop: 8 }}>
+            <Text variant="title" numberOfLines={3} style={{ marginTop: 8 }}>
               {item.title}
             </Text>
             {item.excerpt ? (
@@ -110,14 +112,14 @@ function ArticleRowImpl({ item, variant, onPress, onLongPress, showFeed }: Props
   const thumb = item.thumb_path ? (
     <Image
       source={{ uri: item.thumb_path }}
-      style={[styles.thumb, read && { opacity: 0.75 }]}
+      style={styles.thumb}
       contentFit="cover"
       recyclingKey={String(item.id)}
       cachePolicy="memory-disk"
     />
   ) : null;
   const title = (
-    <Text variant="listTitle" numberOfLines={3} style={{ color: titleColor }}>
+    <Text variant="listTitle" numberOfLines={3}>
       {item.title}
     </Text>
   );
@@ -125,7 +127,7 @@ function ArticleRowImpl({ item, variant, onPress, onLongPress, showFeed }: Props
   // The title spans the full width; the thumbnail sits beside the excerpt below it.
   // Without an excerpt there is nothing to pair the image with, so it stays beside the title.
   return (
-    <Pressable {...press} style={pressed(styles.standard)}>
+    <Pressable {...press} style={pressed([styles.standard, dim])}>
       <Meta item={item} showFeed={showFeed} />
       {item.excerpt ? (
         <>
@@ -133,7 +135,7 @@ function ArticleRowImpl({ item, variant, onPress, onLongPress, showFeed }: Props
           <View style={styles.standardBody}>
             <Text
               variant="callout"
-              tone={read ? 'tertiary' : 'secondary'}
+              tone="secondary"
               numberOfLines={thumb ? 3 : 2}
               style={styles.excerpt}
             >
@@ -183,4 +185,5 @@ const makeStyles = (t: Theme) => ({
   },
   cardImage: { width: '100%' as const, aspectRatio: 16 / 9, backgroundColor: t.colors.surfaceSunken },
   cardBody: { padding: 16 },
+  read: { opacity: 0.5 },
 });

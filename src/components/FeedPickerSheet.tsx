@@ -3,7 +3,9 @@ import { Bookmark, Check, Layers, Search } from 'lucide-react-native';
 import { useMemo, useState } from 'react';
 import { TextInput, View } from 'react-native';
 
+import { sortFeeds } from '@/db/feeds';
 import type { FeedSummary } from '@/db/types';
+import { useSettings } from '@/state/settings';
 import { useTheme } from '@/theme';
 
 import { FeedIcon } from './FeedIcon';
@@ -31,10 +33,12 @@ type Entry =
 export function FeedPickerSheet({ visible, onClose, feeds, totalUnread, savedCount, selection, onSelect }: Props) {
   const theme = useTheme();
   const [query, setQuery] = useState('');
+  const feedSort = useSettings((s) => s.feedSort);
 
   const entries = useMemo<Entry[]>(() => {
     const q = query.trim().toLowerCase();
-    const matching = q ? feeds.filter((f) => f.name.toLowerCase().includes(q) || f.url.toLowerCase().includes(q)) : feeds;
+    const sorted = sortFeeds(feeds, feedSort);
+    const matching = q ? sorted.filter((f) => f.name.toLowerCase().includes(q) || f.url.toLowerCase().includes(q)) : sorted;
     const list: Entry[] = [];
     if (!q) {
       list.push({ key: 'all', type: 'special', selection: { kind: 'all' }, label: 'All articles', count: totalUnread, icon: 'all' });
@@ -43,7 +47,7 @@ export function FeedPickerSheet({ visible, onClose, feeds, totalUnread, savedCou
     }
     for (const f of matching) list.push({ key: `f${f.id}`, type: 'feed', feed: f });
     return list;
-  }, [feeds, query, totalUnread, savedCount]);
+  }, [feeds, feedSort, query, totalUnread, savedCount]);
 
   const isSelected = (s: FeedSelection) =>
     s.kind === selection.kind && (s.kind !== 'feed' || (selection.kind === 'feed' && s.feedId === selection.feedId));

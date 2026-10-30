@@ -41,16 +41,21 @@ GitHub Releases is the only channel. Commit as `deepakness <me@deepakness.com>`.
 - Background offline work (`processPendingArticles`) waits at `whenIdle()` while the user scrolls.
 - `images_status`: `deferred` waits for Wi-Fi and is retried. `skipped` is never retried.
 - Readability runs in a hidden WebView, because Hermes would block the JS thread.
+- Background refresh (`src/feeds/background.ts`) is defined from `index.js`, before `expo-router/entry`, because a headless start never loads routes. It runs only the feed pass; full text needs the extractor WebView, so it finishes on the next launch.
+- With "Hide read", the timeline keeps articles read since the last refresh (`keepReadSince`, `src/state/readKeep.ts`), so rows don't vanish mid-session. Bulk "mark read" calls `clearKeptRead()`.
 - Reader fonts are inlined as base64, because file:// fonts are blocked. Headings use `var(--body)` so Serif/Sans applies to them.
 
 ## Pitfalls hit before
 
 - No swipe actions on list rows. The owner didn't want them, and they broke vertical scrolling. Row actions are on long-press.
 - Keep list rows free of per-row animation or gesture state; it caused jank.
-- FlashList v2 sticky headers cover the `RefreshControl` spinner, hence `progressViewOffset`.
+- No pull-to-refresh. It fired by accident when scrolling up to the top; refresh is on open/resume and the header button.
 - Toasts are global. Screens with bottom controls call `useToastLift(px)`.
 - Android clips centred multi-line `Text`. Use `alignSelf: 'stretch'`.
 - Saved ignores "Hide read"; otherwise opened saved articles would vanish.
 - Re-applying the same route param (`/?feed=12`) needs a nonce (`at=`).
 - RN 0.88 has no InteractionManager; defer with `setTimeout`.
+- The reader WebView must not set `nestedScrollEnabled`. It makes the WebView block its parents on every touch, so the pager can't swipe (1.0.0 shipped this way).
+- R8 strips classes that WorkManager creates by reflection, and the app crashes at launch. The keep rules are `extraProguardRules` in `app.json`.
+- To test background refresh, background the app, then run `adb shell cmd jobscheduler run -f com.deepak.feedline <id>`. The ID changes after each run (`dumpsys jobscheduler`). A cold start after `am kill` counts as a force-stop, so WorkManager reschedules and the forced job disappears.
 - `__tests__/refresh.test.ts` runs the real SQL on `node:sqlite`. Extend it for SQL or refresh changes.

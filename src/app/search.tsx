@@ -1,17 +1,21 @@
 import { FlashList } from '@shopify/flash-list';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, X } from 'lucide-react-native';
-import { useEffect, useState } from 'react';
+import { ArrowLeft, ChevronDown, X } from 'lucide-react-native';
+import { useEffect, useMemo, useState } from 'react';
 import { TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { EmptyState } from '@/components/EmptyState';
 import { FeedIcon } from '@/components/FeedIcon';
+import { FeedPickerSheet, type FeedSelection } from '@/components/FeedPickerSheet';
 import { IconButton } from '@/components/IconButton';
 import { Divider } from '@/components/Misc';
 import { Pressable } from '@/components/Pressable';
 import { Text } from '@/components/Text';
-import { searchArticles, type SearchHit } from '@/db/articles';
+import { countArticles, searchArticles, type SearchHit } from '@/db/articles';
+import { listFeedSummaries } from '@/db/feeds';
+import type { ArticleFilter } from '@/db/types';
+import { useQuery } from '@/db/useQuery';
 import { relativeTime } from '@/lib/time';
 import { useReaderSession } from '@/state/readerSession';
 import { useSettings } from '@/state/settings';
@@ -44,13 +48,30 @@ export default function SearchScreen() {
   const setSettings = useSettings((s) => s.set);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchHit[] | null>(null);
+  const [scope, setScope] = useState<FeedSelection>({ kind: 'all' });
+  const [scopeOpen, setScopeOpen] = useState(false);
+  const { data: feeds } = useQuery(listFeedSummaries, [], ['feeds', 'articles']);
+  const { data: savedCounts } = useQuery(() => countArticles({ kind: 'saved', hideRead: false }), [], ['articles']);
+  const totalUnread = useMemo(() => (feeds ?? []).reduce((n, f) => n + f.unread, 0), [feeds]);
+  const scopeFeed = scope.kind === 'feed' ? feeds?.find((f) => f.id === scope.feedId) : undefined;
+  const scopeLabel = scope.kind === 'all' ? 'All articles' : scope.kind === 'saved' ? 'Saved' : (scopeFeed?.name ?? 'Feed');
+  const scopeFilter = useMemo<ArticleFilter | undefined>(
+    () =>
+      scope.kind === 'all'
+        ? undefined
+        : scope.kind === 'saved'
+          ? { kind: 'saved', hideRead: false }
+          : { kind: 'feed', feedId: scope.feedId, hideRead: false },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [scope.kind, scope.kind === 'feed' ? scope.feedId : 0],
+  );
 
   useEffect(() => {
     const q = query.trim();
     if (!q) return;
     let cancelled = false;
     const timer = setTimeout(() => {
-      searchArticles(q)
+      searchArticles(q, scopeFilter)
         .then((r) => !cancelled && setResults(r))
         .catch(() => !cancelled && setResults([]));
     }, 160);
@@ -58,7 +79,7 @@ export default function SearchScreen() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [query]);
+  }, [query, scopeFilter]);
 
   const remember = () => {
     const q = query.trim();
@@ -68,7 +89,7 @@ export default function SearchScreen() {
 
   const open = (hit: SearchHit) => {
     remember();
-    useReaderSession.setState({ ids: (results ?? []).map((r) => r.id) });
+    useReaderSession.setState({ ids: (results ?? []).map((r) => r.id), origin: 'search', lastId: hit.id });
     router.push({ pathname: '/article/[id]', params: { id: String(hit.id) } });
   };
 
@@ -102,6 +123,33 @@ export default function SearchScreen() {
           {query ? <IconButton icon={X} size={18} label="Clear" onPress={() => setQuery('')} color={theme.colors.inkTertiary} /> : null}
         </View>
       </View>
+      {feeds && feeds.length > 1 ? (
+        <View style={{ flexDirection: 'row', paddingHorizontal: theme.space.gutter, paddingBottom: 8 }}>
+          <Pressable
+            onPress={() => setScopeOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel={`Searching ${scopeLabel}. Change`}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+              maxWidth: '100%',
+              height: 32,
+              paddingLeft: 12,
+              paddingRight: 8,
+              borderRadius: 16,
+              borderWidth: 1,
+              borderColor: theme.colors.hairline,
+              backgroundColor: scope.kind === 'all' ? theme.colors.surface : theme.colors.accentSoft,
+            }}
+          >
+            <Text variant="meta" tone="secondary" numberOfLines={1} style={{ flexShrink: 1 }}>
+              In {scopeLabel}
+            </Text>
+            <ChevronDown size={16} color={theme.colors.inkTertiary} strokeWidth={2} />
+          </Pressable>
+        </View>
+      ) : null}
 
       {!query.trim() || results === null ? (
         recent.length ? (
@@ -134,7 +182,7 @@ export default function SearchScreen() {
           <EmptyState mark="⌕" title="Search everything you’ve fetched" body="Titles, authors and full article text, all offline." />
         )
       ) : results.length === 0 ? (
-        <EmptyState mark="⌕" title="No matches" body={`Nothing you’ve downloaded mentions “${query.trim()}”.`} />
+        <EmptyState mark="⌕" title="No matches" body={`Nothing you’ve downloaded${scope.kind === 'all' ? '' : ` in ${scopeLabel}`} mentions “${query.trim()}”.`} />
       ) : (
         <FlashList
           data={results}
@@ -162,6 +210,16 @@ export default function SearchScreen() {
           )}
         />
       )}
+
+      <FeedPickerSheet
+        visible={scopeOpen}
+        onClose={() => setScopeOpen(false)}
+        feeds={feeds ?? []}
+        totalUnread={totalUnread}
+        savedCount={savedCounts?.total ?? 0}
+        selection={scope}
+        onSelect={setScope}
+      />
     </View>
   );
 }

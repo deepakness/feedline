@@ -63,7 +63,11 @@ export type ArticleFull = ArticleListItem & {
   full_text_mode: FullTextMode;
 };
 
-export type ArticleFilter =
+export type ArticleFilter = (
   | { kind: 'all'; hideRead: boolean }
   | { kind: 'saved'; hideRead: boolean }
-  | { kind: 'feed'; feedId: number; hideRead: boolean };
+  | { kind: 'feed'; feedId: number; hideRead: boolean }
+) & {
+  /** With hideRead, articles read at or after this time stay listed. */
+  keepReadSince?: number;
+};

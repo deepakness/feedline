@@ -5,7 +5,7 @@ import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold';
 import { Newsreader_500Medium } from '@expo-google-fonts/newsreader/500Medium';
 import { Newsreader_600SemiBold } from '@expo-google-fonts/newsreader/600SemiBold';
 import { useFonts } from 'expo-font';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, router, useRouter } from 'expo-router';
 import { ShareIntentProvider, useShareIntentContext } from 'expo-share-intent';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -20,6 +20,7 @@ import { ToastHost, showToast } from '@/components/Toast';
 import { getDb } from '@/db/client';
 import { listFeeds } from '@/db/feeds';
 import { ExtractorHost } from '@/extract/ExtractorHost';
+import { syncBackgroundRefresh } from '@/feeds/background';
 import { processPendingArticles, refreshFeeds } from '@/feeds/refresh';
 import { extractUrl } from '@/lib/url';
 import { useRefreshStore } from '@/state/refreshStore';
@@ -115,7 +116,12 @@ function RefreshOnOpen() {
       if (Date.now() - s.lastRefreshAt < REFRESH_ON_OPEN_AFTER_MS) return;
       if (!(await listFeeds()).length) return;
       const summary = await refreshFeeds();
-      if (summary?.newArticles) showToast(`${summary.newArticles} new ${summary.newArticles === 1 ? 'article' : 'articles'}`);
+      if (!summary) return;
+      if (summary.newArticles) showToast(`${summary.newArticles} new ${summary.newArticles === 1 ? 'article' : 'articles'}`);
+      // One broken feed is shown on the Feeds screen; every feed failing usually means no connection.
+      else if (summary.failedFeeds && summary.failedFeeds === summary.feeds) {
+        showToast('Couldn’t check for new articles. Are you online?', { action: { label: 'Feeds', onPress: () => router.push('/feeds') } });
+      }
     };
     // Finish anything a previous session left half-downloaded, once the first
     // screen has had the JS thread to itself.
@@ -123,6 +129,8 @@ function RefreshOnOpen() {
       processPendingArticles().catch(() => {});
       maybeRefresh().catch(() => {});
     }, 1500);
+    // Keeps the system's schedule in step with the setting (e.g. after a reinstall).
+    syncBackgroundRefresh(settings.get().backgroundRefresh).catch(() => {});
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') maybeRefresh().catch(() => {});
     });

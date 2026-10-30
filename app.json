@@ -3,7 +3,7 @@
     "name": "Feedline",
     "slug": "feedline",
     "scheme": "feedline",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -16,7 +16,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "versionCode": 10
+      "versionCode": 11
     },
     "plugins": [
       "expo-router",
@@ -62,12 +62,14 @@
         "expo-build-properties",
         {
           "android": {
-            "usesCleartextTraffic": true
+            "usesCleartextTraffic": true,
+            "extraProguardRules": "# WorkManager (expo-background-task) creates these by reflection; R8 strips them otherwise.\n-keepnames class * extends androidx.room.RoomDatabase\n-keep class * extends androidx.room.RoomDatabase { <init>(); }\n-keep class * extends androidx.work.InputMerger { <init>(); }\n-keep class * extends androidx.work.ListenableWorker { <init>(android.content.Context, androidx.work.WorkerParameters); }"
           }
         }
       ],
       "./plugins/withReleaseSigning",
-      "./plugins/withAbiSplits"
+      "./plugins/withAbiSplits",
+      "expo-background-task"
     ],
     "experiments": {
       "typedRoutes": true

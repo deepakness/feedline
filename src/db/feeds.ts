@@ -14,6 +14,11 @@ export function listFeedSummaries(): Promise<FeedSummary[]> {
   );
 }
 
+/** Name order comes from the query; `unread` puts the busiest feeds first. */
+export function sortFeeds(feeds: FeedSummary[], by: 'name' | 'unread'): FeedSummary[] {
+  return by === 'unread' ? [...feeds].sort((a, b) => b.unread - a.unread) : feeds;
+}
+
 export function listFeeds(): Promise<FeedRow[]> {
   return db().getAllAsync<FeedRow>('SELECT * FROM feeds ORDER BY id');
 }

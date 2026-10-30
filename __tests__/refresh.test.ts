@@ -61,9 +61,10 @@ jest.mock('@/feeds/fetch', () => ({
   },
 }));
 
-import { listArticles, searchArticles } from '@/db/articles';
+import { listArticles, markAllRead, searchArticles, setRead, setSaved } from '@/db/articles';
 import { db, getDb } from '@/db/client';
-import { getFeed, insertFeed } from '@/db/feeds';
+import { getFeed, insertFeed, sortFeeds } from '@/db/feeds';
+import type { FeedSummary } from '@/db/types';
 import { refreshFeeds } from '@/feeds/refresh';
 import { settings } from '@/state/settings';
 
@@ -154,4 +155,53 @@ it('keeps seen keys fresh while a feed answers "not modified"', async () => {
   await refreshFeeds([id]);
   const row = await db().getFirstAsync<{ oldest: number }>('SELECT MIN(last_seen_at) AS oldest FROM seen_items WHERE feed_id = ?', [id]);
   expect(row!.oldest).toBeGreaterThan(Date.now() - 60_000);
+});
+
+it('keeps recently read articles listed under "Hide read" until the cutoff moves', async () => {
+  const url = 'https://keep.test/feed';
+  const feedId = await insertFeed({ url });
+  mockFeedBodies[url] = rss([
+    { guid: 'k1', title: 'Keep one', ageDays: 0 },
+    { guid: 'k2', title: 'Keep two', ageDays: 0.1 },
+    { guid: 'k3', title: 'Keep three', ageDays: 0.2 },
+  ]);
+  await refreshFeeds([feedId]);
+  const [one, two] = await listArticles({ kind: 'feed', feedId, hideRead: false }, 10);
+  // Read long ago, and just now.
+  await setRead([one!.id], true);
+  await db().runAsync('UPDATE articles SET read_at = 1000 WHERE id = ?', [one!.id]);
+  await setRead([two!.id], true);
+
+  const since = Date.now() - 60_000;
+  const titles = async (keepReadSince?: number) =>
+    (await listArticles({ kind: 'feed', feedId, hideRead: true, keepReadSince }, 10)).map((a) => a.title);
+  expect(await titles()).toEqual(['Keep three']);
+  expect(await titles(since)).toEqual(['Keep two', 'Keep three']);
+  expect(await titles(Date.now() + 1)).toEqual(['Keep three']);
+
+  // Marking all read ignores the kept window: only unread articles change.
+  const marked = await markAllRead({ kind: 'feed', feedId, hideRead: true, keepReadSince: since });
+  expect(marked).toHaveLength(1);
+});
+
+it('narrows search to one feed or to Saved', async () => {
+  const a = await insertFeed({ url: 'https://scope-a.test/feed' });
+  const b = await insertFeed({ url: 'https://scope-b.test/feed' });
+  mockFeedBodies['https://scope-a.test/feed'] = rss([{ guid: 'sa', title: 'Walrus from A', ageDays: 0, body: 'walrus tusks' }]);
+  mockFeedBodies['https://scope-b.test/feed'] = rss([{ guid: 'sb', title: 'Walrus from B', ageDays: 0, body: 'walrus again' }]);
+  await refreshFeeds([a, b]);
+  const titles = async (...args: Parameters<typeof searchArticles>) => (await searchArticles(...args)).map((h) => h.title).sort();
+  expect(await titles('walrus')).toEqual(['Walrus from A', 'Walrus from B']);
+  expect(await titles('walrus', { kind: 'feed', feedId: b, hideRead: false })).toEqual(['Walrus from B']);
+  expect(await titles('walrus', { kind: 'saved', hideRead: false })).toEqual([]);
+  const [hit] = await searchArticles('walrus', { kind: 'feed', feedId: a, hideRead: false });
+  await setSaved(hit!.id, true);
+  expect(await titles('walrus', { kind: 'saved', hideRead: false })).toEqual(['Walrus from A']);
+});
+
+it('sorts feeds by unread, keeping name order for ties', () => {
+  const feed = (name: string, unread: number) => ({ name, unread }) as FeedSummary;
+  const byName = [feed('Alpha', 1), feed('Beta', 5), feed('Gamma', 1)];
+  expect(sortFeeds(byName, 'unread').map((f) => f.name)).toEqual(['Beta', 'Alpha', 'Gamma']);
+  expect(sortFeeds(byName, 'name')).toBe(byName);
 });

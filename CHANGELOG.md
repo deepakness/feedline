@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.1.0 (versionCode 11)
+
+- Fixed: swiping between articles in the reader never worked
+- Back from the reader scrolls the list to the last article read
+- Read articles are clearly faded in every list style
+- With "Hide read", articles read since the last refresh stay listed
+- Removed pull-to-refresh, which fired by accident
+- "Back to top" / "New articles" button on long lists
+- Back from a feed or Saved returns to All articles
+- Optional background refresh every few hours (off by default)
+- Sort feeds by name or unread count
+- Search within one feed or Saved
+- "Mark all as read" on a feed's page, with Undo
+- A message when the automatic refresh can't reach any feed
+- Version row in Settings opens release notes
+
 ## 1.0.0 (versionCode 10)
 
 First public release.

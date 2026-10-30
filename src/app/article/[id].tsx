@@ -44,6 +44,9 @@ export default function ReaderScreen() {
   // Keep toasts clear of the floating toolbar (it sits 12px up and is BAR tall).
   useToastLift(BAR);
   const currentId = ids[index]!;
+  useEffect(() => {
+    useReaderSession.setState({ lastId: currentId });
+  }, [currentId]);
   // Neighbouring pages mount once the visible one has rendered, so the first
   // article appears as fast as possible.
   const [loadedIds, setLoadedIds] = useState<ReadonlySet<number>>(() => new Set());
@@ -353,7 +356,8 @@ const ReaderPage = memo(function ReaderPage({ articleId, active, topInset, onMes
           textZoom={100}
           overScrollMode="never"
           showsVerticalScrollIndicator={false}
-          nestedScrollEnabled
+          // No nestedScrollEnabled: it makes the WebView block its parents from taking any
+          // touch, so the pager could never swipe. Wide blocks pause paging via 'hscroll'.
           setBuiltInZoomControls={false}
           cacheEnabled
           webviewDebuggingEnabled={__DEV__}

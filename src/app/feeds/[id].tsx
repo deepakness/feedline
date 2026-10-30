@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { List, RotateCw, Trash2 } from 'lucide-react-native';
+import { CheckCheck, List, RotateCw, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
 import { ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,7 +11,7 @@ import { Divider, Row, SectionTitle, Segmented } from '@/components/Misc';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { Text } from '@/components/Text';
 import { showToast } from '@/components/Toast';
-import { countArticles } from '@/db/articles';
+import { countArticles, markAllRead, markUnread } from '@/db/articles';
 import { deleteFeed, getFeed, renameFeed, setFullTextMode } from '@/db/feeds';
 import type { FullTextMode } from '@/db/types';
 import { useQuery } from '@/db/useQuery';
@@ -19,6 +19,7 @@ import { deleteArticleImages } from '@/feeds/images';
 import { refreshOne } from '@/feeds/refresh';
 import { agoLabel } from '@/lib/time';
 import { openInBrowser } from '@/lib/articleActions';
+import { clearKeptRead } from '@/state/readKeep';
 import { useTheme } from '@/theme';
 
 export default function FeedDetail() {
@@ -58,6 +59,12 @@ export default function FeedDetail() {
     const r = await refreshOne(feed.id);
     setRefreshing(false);
     showToast(r.error ? r.error : r.added ? `${r.added} new ${r.added === 1 ? 'article' : 'articles'}` : 'No new articles');
+  };
+
+  const markRead = async () => {
+    const ids = await markAllRead({ kind: 'feed', feedId: feed.id, hideRead: false });
+    clearKeptRead();
+    showToast(`Marked ${ids.length} as read`, { action: { label: 'Undo', onPress: () => markUnread(ids) } });
   };
 
   const unsubscribe = async () => {
@@ -160,6 +167,7 @@ export default function FeedDetail() {
           {counts?.total ? (
             <Button label="Show articles" icon={List} onPress={() => router.dismissTo({ pathname: '/', params: { feed: String(feed.id), at: String(Date.now()) } })} />
           ) : null}
+          {counts?.unread ? <Button label="Mark all as read" icon={CheckCheck} kind="secondary" onPress={markRead} /> : null}
           <Button label="Refresh this feed" icon={RotateCw} kind="secondary" loading={refreshing} onPress={doRefresh} />
           <Button label="Unsubscribe" icon={Trash2} kind="danger" onPress={() => setConfirmOpen(true)} />
         </View>

@@ -5,6 +5,7 @@ export type ListStyle = 'standard' | 'compact' | 'cards';
 export type ReaderFamily = 'serif' | 'sans';
 export type ImageMode = 'always' | 'wifi' | 'off';
 export type FullTextDefault = 'auto' | 'never';
+export type FeedSort = 'name' | 'unread';
 /** 0 means keep forever. */
 export type RetentionDays = 7 | 30 | 90 | 0;
 
@@ -16,9 +17,11 @@ export type Settings = {
   readerLineHeight: number;
   readerFamily: ReaderFamily;
   refreshOnOpen: boolean;
+  backgroundRefresh: boolean;
   retentionDays: RetentionDays;
   imageMode: ImageMode;
   fullTextDefault: FullTextDefault;
+  feedSort: FeedSort;
   lastRefreshAt: number;
   opmlSaveDirUri: string | null;
   recentSearches: string[];
@@ -38,9 +41,11 @@ const DEFAULTS: Settings = {
   readerLineHeight: 1.6,
   readerFamily: 'serif',
   refreshOnOpen: true,
+  backgroundRefresh: false,
   retentionDays: 30,
   imageMode: 'always',
   fullTextDefault: 'auto',
+  feedSort: 'name',
   lastRefreshAt: 0,
   opmlSaveDirUri: null,
   recentSearches: [],

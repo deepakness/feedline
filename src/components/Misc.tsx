@@ -14,10 +14,10 @@ import { useTheme } from '@/theme';
 import { Pressable } from './Pressable';
 import { Text } from './Text';
 
-/** Sticky day divider in the timeline. */
-/** Fixed so the pull-to-refresh spinner can start just below a pinned day header. */
+/** Fixed so the timeline's floating button can sit just below a pinned day header. */
 export const DAY_HEADER_HEIGHT = 40;
 
+/** Sticky day divider in the timeline. */
 export function DayHeader({ label }: { label: string }) {
   const theme = useTheme();
   return (

@@ -2,6 +2,8 @@ import { create } from 'zustand';
 
 export type RefreshSummary = {
   newArticles: number;
+  /** Feeds this refresh checked. */
+  feeds: number;
   failedFeeds: number;
   finishedAt: number;
 };
