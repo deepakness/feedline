@@ -32,7 +32,7 @@ Two channels: Google Play (the README's main link) and GitHub Releases (APKs). C
 
 - Play: the app is on the Vempus organisation account. Play App Signing holds a copy of the Feedline key, so Play and GitHub builds update each other. AABs are signed with a separate upload key (`FEEDLINE_UPLOAD_*` in `~/.gradle/gradle.properties`); the script rejects any other.
 - Asset names are fixed. The README links `releases/latest/download/feedline.apk` and `feedline-armv7.apk`.
-- Users read release notes in the app (Settings → Follow Feedline updates subscribes to `releases.atom`), so write them for people.
+- Users read release notes in the app (Settings → Follow Feedline updates subscribes to `releases.atom`), so write them for people. Most readers installed from Play: say near the top that Play updates Feedline automatically, and put the APK steps under "Install from GitHub".
 - Rewrite history only when the owner asks: one orphan commit, force-push, then delete the old release, tag and CI runs.
 - Icons come from `scripts/make-icons.py`. The social image comes from `scripts/make-social-preview.py`; the owner uploads it in GitHub Settings. For screenshots, demo mode doesn't hide notification icons, so paint over them.
 
