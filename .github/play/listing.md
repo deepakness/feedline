@@ -7,7 +7,7 @@ Feedline: RSS Reader
 A calm, open-source RSS reader. No accounts, no ads, no tracking.
 
 ## Full description
-Feedline is a quiet place to read the sites you love. Follow any blog or news site with an RSS, Atom or JSON feed, and your articles are saved on your phone, ready to read anywhere, even offline.
+Feedline is a quiet place to read the sites you love. Follow any blog or website with an RSS, Atom or JSON feed, and your articles are saved on your phone, ready to read anywhere, even offline.
 
 OPEN SOURCE
 Feedline is free and open source under the MIT license. There are no ads, no in-app purchases and no subscriptions. Read the code, report a bug or suggest an idea at github.com/deepakness/feedline

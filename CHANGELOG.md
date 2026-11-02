@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.1.3 (versionCode 15)
+
+- Bigger mark in the app icon
+
 ## 1.1.2 (versionCode 14)
 
 - New package name, `com.vempus.feedline`, ahead of the Google Play release. This installs as a new app: export your feeds as OPML from the old one first

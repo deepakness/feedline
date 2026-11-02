@@ -5,6 +5,7 @@ from PIL import Image, ImageDraw
 root = str(pathlib.Path(__file__).resolve().parent.parent)
 PAPER, INK, ACCENT, DOT, LINE, SOFT = '#FAF7F2', '#1D1B18', '#B4532A', '#D9D1C4', '#9A9288', '#E3B49C'
 SS = 4  # supersampling for smooth edges
+MARK_SCALE = 1.45  # grows the mark around the icon's centre
 
 # Geometry on a 100x100 canvas (the visible icon area); x shifted to centre the mark.
 DX = 0.75
@@ -20,21 +21,21 @@ SPLASH_ROWS = [
     (62, 18, DOT, LINE, 110),
 ]
 
-def draw_mark(size, canvas_px, offset, bg=None, mono=False, rows=ROWS):
+def draw_mark(size, canvas_px, offset, bg=None, mono=False, rows=ROWS, scale=MARK_SCALE):
     """canvas_px: pixels that the 100-unit canvas spans; offset: where it starts."""
     big = size * SS
     img = Image.new('RGBA', (big, big), bg or (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
     u = canvas_px * SS / 100
     o = offset * SS
-    P = lambda v: o + v * u
+    P = lambda v: o + (50 + (v - 50) * scale) * u
     for y, w, dot, line, alpha in rows:
         dc = (255, 255, 255, alpha) if mono else dot
         lc = (255, 255, 255, alpha) if mono else line
         cx, r = 33 + DX, 4.5
         d.ellipse((P(cx - r), P(y - r), P(cx + r), P(y + r)), fill=dc)
         x0 = 42 + DX
-        d.rounded_rectangle((P(x0), P(y - 3), P(x0 + w), P(y + 3)), radius=3 * u, fill=lc)
+        d.rounded_rectangle((P(x0), P(y - 3), P(x0 + w), P(y + 3)), radius=3 * scale * u, fill=lc)
     return img.resize((size, size), Image.LANCZOS)
 
 # Full icon: canvas = whole image.
@@ -45,7 +46,7 @@ off = (1024 - vis) / 2
 draw_mark(1024, vis, off).save(f'{root}/assets/android-icon-foreground.png')
 draw_mark(1024, vis, off, mono=True).save(f'{root}/assets/android-icon-monochrome.png')
 # Splash: same proportions as the old splash mark on its 512 canvas.
-draw_mark(512, 512, 0, rows=SPLASH_ROWS).save(f'{root}/assets/splash-icon.png')
+draw_mark(512, 512, 0, rows=SPLASH_ROWS, scale=1).save(f'{root}/assets/splash-icon.png')
 # README icon: rounded corners baked in (GitHub strips CSS).
 n = 256
 readme = Image.open(f'{root}/assets/icon.png').convert('RGBA').resize((n * SS, n * SS), Image.LANCZOS)
