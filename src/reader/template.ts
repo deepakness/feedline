@@ -110,7 +110,7 @@ a.embed.embed-noimg .embed-label{color:var(--ink)}
 .end{margin:44px auto 0;width:36px;height:1px;background:var(--rule)}
 article img:not(.broken){cursor:zoom-in}
 html.lb-open,html.lb-open body{overflow:hidden}
-.lightbox{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;overflow:auto;background:rgba(12,11,10,.94);-webkit-overflow-scrolling:touch}
+.lightbox{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;overflow:auto;background:rgba(12,11,10,.97);-webkit-overflow-scrolling:touch}
 .lightbox img{display:block;margin:0;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;border-radius:0;background:none}
 .lightbox.zoomed{display:block}
 .lightbox.zoomed img{max-width:none;max-height:none}
