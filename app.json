@@ -69,6 +69,8 @@
         {
           "android": {
             "usesCleartextTraffic": true,
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true,
             "extraProguardRules": "# WorkManager (expo-background-task) creates these by reflection; R8 strips them otherwise.\n-keepnames class * extends androidx.room.RoomDatabase\n-keep class * extends androidx.room.RoomDatabase { <init>(); }\n-keep class * extends androidx.work.InputMerger { <init>(); }\n-keep class * extends androidx.work.ListenableWorker { <init>(android.content.Context, androidx.work.WorkerParameters); }"
           }
         }

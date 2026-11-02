@@ -34,8 +34,10 @@ mkdir -p "$RELEASE_DIR"
 npx expo prebuild --platform android --clean
 # One APK per architecture (plugins/withAbiSplits.js): 64-bit for almost every phone,
 # 32-bit for older and budget ones.
+# Compressed native libraries keep the sideloaded APK small (the AAB leaves them
+# uncompressed for Play).
 (cd "$ROOT/android" && ./gradlew assembleRelease \
-  -PreactNativeArchitectures=arm64-v8a,armeabi-v7a -PfeedlineAbiSplits=true)
+  -PreactNativeArchitectures=arm64-v8a,armeabi-v7a -PfeedlineAbiSplits=true -Pexpo.useLegacyPackaging=true)
 
 BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -1)"
 APKSIGNER="$BUILD_TOOLS/apksigner"
