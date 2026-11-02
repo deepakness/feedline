@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.1.4 (versionCode 16)
+
+- Articles reopen where you left off, and the page no longer jumps to the top when the full text arrives
+- Tap an image to see it larger; tap again to zoom and pan
+- Right-to-left articles (Arabic, Hebrew, Persian) read in the right direction
+- The reader follows your phone's text size
+- Feeds in older text encodings (Cyrillic, Greek, Central European and more) display correctly; unreadable ones say so instead of showing garbled text
+- A dropped connection no longer leaves an article stuck as a summary: Feedline tries again later
+- Choosing a shorter "Keep articles" period asks before deleting anything
+- "Never" download images now also skips list thumbnails; "Wi-Fi only" waits for Wi-Fi for them too
+- Feeds that keep failing are checked less often, and missing site icons are looked for weekly instead of on every refresh
+- Fewer database writes on each refresh, size limits on downloads, and partly downloaded images get retried
+- Read articles in the list stay easy to read; grey text has more contrast
+- TalkBack reads Settings descriptions and which feeds failed
+- Feedline's data is no longer included in Android's cloud backup
+- Smaller install from Google Play
+
 ## 1.1.3 (versionCode 15)
 
 - Bigger mark in the app icon
