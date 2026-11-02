@@ -56,7 +56,7 @@ export default function FeedsScreen() {
               onPress={() => router.push({ pathname: '/feeds/[id]', params: { id: String(item.id) } })}
               pressScale={1}
               accessibilityRole="button"
-              accessibilityLabel={`${item.name}, ${item.unread} unread`}
+              accessibilityLabel={`${item.name}, ${item.unread} unread${item.last_error ? `, refresh failed: ${item.last_error}` : ''}`}
               style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: theme.space.gutter, paddingVertical: 14 }}
             >
               <FeedIcon name={item.name} uri={item.icon_path} size={30} />

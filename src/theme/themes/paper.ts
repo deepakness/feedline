@@ -19,7 +19,7 @@ export const paper: Theme = {
     surfaceSunken: '#F2EDE4',
     ink: '#1D1B18',
     inkSecondary: '#5C564E',
-    inkTertiary: '#7A7268',
+    inkTertiary: '#6B6359',
     hairline: '#E6DFD3',
     accent: '#B4532A',
     accentSoft: '#F3E3D9',

@@ -131,7 +131,14 @@ export function Row({ label, detail, value, onPress, right, danger, disabled }: 
   );
   if (!onPress) return body;
   return (
-    <Pressable onPress={onPress} disabled={disabled} pressScale={1} accessibilityRole="button" accessibilityLabel={label}>
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      pressScale={1}
+      accessibilityRole="button"
+      // The visible value and description are read too, not just the label.
+      accessibilityLabel={[label, value, detail].filter(Boolean).join(', ')}
+    >
       {body}
     </Pressable>
   );
