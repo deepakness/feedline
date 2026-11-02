@@ -6,9 +6,9 @@
 
 <p>A calm, offline-first RSS reader for Android.<br>No accounts, no servers, no tracking: feeds, articles and images all live on your phone.</p>
 
-<a href="https://github.com/deepakness/feedline/releases/latest/download/feedline.apk"><img src="https://img.shields.io/github/v/release/deepakness/feedline?label=Download%20APK&logo=android&logoColor=white&style=for-the-badge&labelColor=B4532A&color=8F3F1E" alt="Download APK"></a>
+<a href="https://play.google.com/store/apps/details?id=com.vempus.feedline"><img src=".github/google-play-badge.png" width="240" alt="Get it on Google Play"></a>
 
-<p><sub>Older 32-bit phone? Get <a href="https://github.com/deepakness/feedline/releases/latest/download/feedline-armv7.apk">feedline-armv7.apk</a></sub></p>
+<p><sub><a href="https://github.com/deepakness/feedline/releases/latest/download/feedline.apk">Download APK</a> · <a href="https://github.com/deepakness/feedline/releases/latest/download/feedline-armv7.apk">32-bit APK</a> · <a href="https://github.com/deepakness/feedline/releases">All releases</a></sub></p>
 
 <br>
 
@@ -28,9 +28,15 @@
 
 ## Install
 
-1. On your phone, tap **Download APK** above, or [download feedline.apk](https://github.com/deepakness/feedline/releases/latest/download/feedline.apk). It always fetches the latest version.
+Get Feedline from [Google Play](https://play.google.com/store/apps/details?id=com.vempus.feedline). Play keeps it updated for you. Then open Feedline and add a feed, or import an OPML file from another reader.
+
+### Prefer not to use Google Play?
+
+1. On your phone, [download feedline.apk](https://github.com/deepakness/feedline/releases/latest/download/feedline.apk). It always fetches the latest version.
 2. Open the downloaded `feedline.apk`. If Android asks, allow your browser to install apps.
 3. Open Feedline and add a feed, or import an OPML file from another reader.
+
+The Play and GitHub versions are signed with the same key, so either one updates the other.
 
 `feedline.apk` is for 64-bit phones, which is almost every phone from the last several years. Older or budget 32-bit phones need `feedline-armv7.apk`. If you're not sure, try `feedline.apk` first; a phone that can't use it says the app isn't compatible.
 
@@ -78,3 +84,5 @@ Feedline was built with AI assistance (Claude Code).
 ## License
 
 [MIT](LICENSE). Bundled fonts and Readability are covered in [NOTICE.md](NOTICE.md).
+
+Google Play and the Google Play logo are trademarks of Google LLC.

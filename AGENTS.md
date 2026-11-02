@@ -22,7 +22,7 @@ Offline-first RSS reader for Android (`com.vempus.feedline`), built with Expo an
 
 ## Releasing
 
-GitHub Releases is the only channel. Commit as `deepakness <me@deepakness.com>`.
+Two channels: Google Play (the README's main link) and GitHub Releases (APKs). Commit as `deepakness <me@deepakness.com>`.
 
 1. Bump `version` and `android.versionCode` in `app.json`. versionCode only goes up; 1.0.0 is 10.
 2. Add a `CHANGELOG.md` entry.
