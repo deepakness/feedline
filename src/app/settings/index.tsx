@@ -16,7 +16,7 @@ import { useQuery } from '@/db/useQuery';
 import { syncBackgroundRefresh } from '@/feeds/background';
 import { imagesRoot, storageUsage } from '@/feeds/images';
 import { refreshOne } from '@/feeds/refresh';
-import { applyRetention } from '@/feeds/retention';
+import { applyRetention, countExpired } from '@/feeds/retention';
 import { openInBrowser } from '@/lib/articleActions';
 import { saveOpmlToDevice, shareOpml } from '@/opml/io';
 import { useSettings, type FeedSort, type ImageMode, type ListStyle, type RetentionDays } from '@/state/settings';
@@ -45,6 +45,10 @@ export default function SettingsScreen() {
   const [exportOpen, setExportOpen] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
   const [following, setFollowing] = useState(false);
+  /** A shorter retention window waiting for confirmation, with what it would remove. */
+  // Kept after closing, so the sheet doesn't empty out while it animates away.
+  const [retentionAsk, setRetentionAsk] = useState<{ days: RetentionDays; count: number }>({ days: 30, count: 0 });
+  const [retentionAskOpen, setRetentionAskOpen] = useState(false);
   const { data: updatesFeed } = useQuery(() => findFeedByUrl(RELEASES_FEED_URL), [], ['feeds']);
 
   const followUpdates = async () => {
@@ -79,11 +83,23 @@ export default function SettingsScreen() {
     return () => clearTimeout(timer);
   }, []);
 
-  const setRetention = async (days: RetentionDays) => {
+  const applyRetentionDays = async (days: RetentionDays) => {
     s.set({ retentionDays: days });
     const removed = await applyRetention();
     if (removed) showToast(`Removed ${removed} old ${removed === 1 ? 'article' : 'articles'}`);
     measure();
+  };
+
+  // A shorter window deletes articles at once, so it asks first; the setting
+  // changes only on confirmation. 0 means forever.
+  const setRetention = async (days: RetentionDays) => {
+    const current = s.retentionDays;
+    const shorter = days !== 0 && (current === 0 || days < current);
+    const count = shorter ? await countExpired(days) : 0;
+    if (count > 0) {
+      setRetentionAsk({ days, count });
+      setRetentionAskOpen(true);
+    } else await applyRetentionDays(days);
   };
 
   const clearImages = async () => {
@@ -170,7 +186,7 @@ export default function SettingsScreen() {
           }
         />
         <Text variant="body" style={{ paddingHorizontal: theme.space.gutter, paddingTop: 14, paddingBottom: 10 }}>
-          Download images for offline reading
+          Download images and thumbnails
         </Text>
         <Segmented<ImageMode>
           options={[
@@ -257,6 +273,20 @@ export default function SettingsScreen() {
         actions={[
           { label: 'Save to device', icon: Download, onPress: doSave },
           { label: 'Share…', icon: Share2, onPress: () => shareOpml().catch(() => showToast('Export failed')) },
+        ]}
+      />
+      <ActionSheet
+        visible={retentionAskOpen}
+        onClose={() => setRetentionAskOpen(false)}
+        title={`Remove ${retentionAsk.count} ${retentionAsk.count === 1 ? 'article' : 'articles'}?`}
+        subtitle={`Articles older than ${retentionAsk.days} days are deleted now. Saved articles are kept.`}
+        actions={[
+          {
+            label: `Keep ${retentionAsk.days} days`,
+            icon: Trash2,
+            danger: true,
+            onPress: () => applyRetentionDays(retentionAsk.days),
+          },
         ]}
       />
       <ActionSheet

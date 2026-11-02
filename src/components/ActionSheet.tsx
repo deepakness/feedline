@@ -33,7 +33,7 @@ export function ActionSheet({ visible, onClose, title, subtitle, actions }: Prop
             {title}
           </Text>
           {subtitle ? (
-            <Text variant="meta" tone="tertiary" style={{ marginTop: 4 }} numberOfLines={1}>
+            <Text variant="meta" tone="tertiary" style={{ marginTop: 4 }} numberOfLines={3}>
               {subtitle}
             </Text>
           ) : null}
