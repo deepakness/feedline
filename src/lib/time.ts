@@ -84,7 +84,10 @@ export function parseFeedDate(input: unknown): number | null {
     const mm = Math.round((abs % 1) * 60).toString().padStart(2, '0');
     value = value.slice(0, zone.index) + ` ${sign}${hh}${mm}`;
   }
-  let ts = Date.parse(value);
+  // "2026-10-24 14:05:00" (space instead of T, no zone): engines disagree on
+  // whether that is local time or invalid, so it is read as UTC explicitly.
+  const naive = value.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?$/);
+  let ts = naive ? Date.UTC(+naive[1]!, +naive[2]! - 1, +naive[3]!, +naive[4]!, +naive[5]!, +(naive[6] ?? 0)) : Date.parse(value);
   if (Number.isNaN(ts)) {
     // RFC 822 without the weekday, or with a weekday Hermes rejects ("Tues,").
     ts = Date.parse(value.replace(/^[A-Za-z]+,?\s*/, ''));
