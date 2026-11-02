@@ -59,5 +59,6 @@ Two channels: Google Play (the README's main link) and GitHub Releases (APKs). C
 - RN 0.88 has no InteractionManager; defer with `setTimeout`.
 - No swiping between articles in the reader; the toolbar's ‹ › arrows move between them. A pager (react-native-pager-view) took over any vertical scroll that drifted a few pixels sideways, and setting `nestedScrollEnabled` on the WebView blocked it completely.
 - R8 strips classes that WorkManager creates by reflection, and the app crashes at launch. The keep rules are `extraProguardRules` in `app.json`.
+- With the app in memory but off screen, React Native can hold JS timers even while a background task runs. Work on the background path must not wait on `setTimeout`; `whenIdle()` resolves at once off screen (`setOnScreen`, set from AppState in `_layout.tsx`).
 - To test background refresh, background the app, then run `adb shell cmd jobscheduler run -f com.vempus.feedline <id>`. The ID changes after each run (`dumpsys jobscheduler`). A cold start after `am kill` counts as a force-stop, so WorkManager reschedules and the forced job disappears.
 - `__tests__/refresh.test.ts` runs the real SQL on `node:sqlite`. Extend it for SQL or refresh changes.

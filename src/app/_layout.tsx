@@ -23,6 +23,7 @@ import { ExtractorHost } from '@/extract/ExtractorHost';
 import { syncBackgroundRefresh } from '@/feeds/background';
 import { sweepPartialDownloads } from '@/feeds/images';
 import { processPendingArticles, refreshFeeds } from '@/feeds/refresh';
+import { setOnScreen } from '@/lib/idle';
 import { extractUrl } from '@/lib/url';
 import { useRefreshStore } from '@/state/refreshStore';
 import { REFRESH_ON_OPEN_AFTER_MS, settings } from '@/state/settings';
@@ -133,7 +134,9 @@ function RefreshOnOpen() {
     }, 1500);
     // Keeps the system's schedule in step with the setting (e.g. after a reinstall).
     syncBackgroundRefresh(settings.get().backgroundRefresh).catch(() => {});
+    setOnScreen(AppState.currentState === 'active');
     const sub = AppState.addEventListener('change', (state) => {
+      setOnScreen(state === 'active');
       if (state === 'active') maybeRefresh().catch(() => {});
     });
     return () => {
