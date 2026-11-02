@@ -68,7 +68,7 @@ Each APK has a matching `.sha256` file in the release. Check it with `shasum -a 
 
 ## Privacy
 
-Feedline has no analytics, ads or accounts. The only network requests it makes are to the feeds and article pages you subscribe to.
+Feedline has no analytics, ads or accounts, and its data is excluded from Android's cloud backup. It connects only to the feeds you follow, the article pages, images and site icons they link to, and YouTube's image server for previews of embedded videos. Details are in the [privacy policy](PRIVACY.md).
 
 ## Build
 

@@ -8,13 +8,18 @@ Feedline is a free, open-source RSS reader for Android, published on Google Play
 
 Your feeds, articles, images, reading history, saved articles and settings are stored only on your device. They are removed when you uninstall the app or clear its data.
 
+Feedline is excluded from Android's cloud backup, so none of this is copied to Google Drive. When you set up a new phone by connecting it directly to the old one, Android may copy Feedline's data across as part of that transfer. To move your subscriptions yourself, use Settings → Export OPML.
+
 ## What the app connects to
 
 Feedline connects directly from your phone to:
 
 - the feeds you subscribe to, and the article pages and images they link to
-- a site's address, when you use it to find its feed or icon
+- a feed's website, to find the feed or the site's icon
+- YouTube's image server (i.ytimg.com), for the preview picture of a video embedded in an article
 - GitHub, only if you choose to follow Feedline updates
+
+Feeds and sites that use plain `http://` instead of `https://` are fetched without encryption, as with any browser.
 
 As with any web request, those sites can see your IP address and that the request came from Feedline. Their own privacy policies apply. Links you open go to your browser.
 
@@ -32,4 +37,4 @@ Feedline is not directed at children and collects no data from anyone.
 
 Changes to this policy are tracked in this file's history. Questions are welcome at https://github.com/deepakness/feedline/issues.
 
-Last updated: 30 October 2026
+Last updated: 3 November 2026

@@ -16,6 +16,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
+      "allowBackup": false,
       "versionCode": 15,
       "blockedPermissions": [
         "android.permission.SYSTEM_ALERT_WINDOW",
