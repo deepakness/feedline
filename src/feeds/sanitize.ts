@@ -49,7 +49,25 @@ const KEEP_ID = true;
 
 const TRACKER_HOSTS =
   /(^|\.)(feedburner\.com|doubleclick\.net|google-analytics\.com|pixel\.wp\.com|stats\.wp\.com|feeds\.feedblitz\.com|ad\.doubleclick\.net|pixel\.quantserve\.com|sb\.scorecardresearch\.com|ws\.amazon\.|mediaplex\.com|pi\.feedsportal\.com|beacon\.krxd\.net|tracking\.|counter\.|analytics\.)/i;
-const JUNK_CLASS = /\b(feedflare|share|sharing|social|related-posts|newsletter-signup|wp-block-buttons|jp-relatedposts|sd-sharing)\b/i;
+// Matched per class token, so a class merely containing a word (social-media-post) survives.
+const JUNK_TOKENS = new Set([
+  'feedflare', 'sharedaddy', 'sd-sharing', 'related-posts', 'jp-relatedposts', 'newsletter-signup',
+  'wp-block-buttons', 'addtoany', 'a2a_kit', 'social',
+]);
+/** share/sharing as any hyphenated part: share-buttons, post-share, entry-sharing. */
+const SHARE_PART = /(^|-)(share|sharing)(-|$)/;
+/** social next to a share or link word: social-share, social-links, entry-social. */
+const SOCIAL_BAR = /^(social-(share|sharing|links?|icons?|buttons?|bar|media-links|networks?)|(entry|post|article)-social)$/;
+
+function isJunkClass(classes: string | undefined): boolean {
+  if (!classes) return false;
+  for (const token of classes.toLowerCase().split(/\s+/)) {
+    if (token && (JUNK_TOKENS.has(token) || SHARE_PART.test(token) || SOCIAL_BAR.test(token))) return true;
+  }
+  return false;
+}
+
+const DIR_VALUES = new Set(['ltr', 'rtl', 'auto']);
 
 const BLOCK = new Set([
   'p', 'div', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'tr', 'figure',
@@ -154,7 +172,12 @@ function isTrackingPixel(attribs: Record<string, string>, url: string): boolean 
   try {
     const u = new URL(url);
     if (TRACKER_HOSTS.test(u.hostname)) return true;
-    if (/\/(~r|~ff|pixel|beacon|track|open)\b/i.test(u.pathname) && !/\.(jpe?g|png|webp|avif)$/i.test(u.pathname)) return true;
+    // Feed-ad and tracker paths, matched as whole path segments so /pixel-art/
+    // or /opening/ are not mistaken for them. Declared real sizes and common
+    // photo formats are always kept.
+    const sized = w > 2 && h > 2;
+    const photo = /\.(jpe?g|png|webp|avif|svg)$/i.test(u.pathname);
+    if (!sized && !photo && /\/(~r|~ff)\/|\/(pixel|beacon|track|open)(\/|\.gif$|$)/i.test(u.pathname)) return true;
   } catch {
     return true;
   }
@@ -183,7 +206,7 @@ export function sanitizeHtml(input: string, baseUrl: string | null): SanitizedCo
       const name = child.name!.toLowerCase();
       const attribs = child.attribs ?? {};
 
-      if (DROP.has(name) || JUNK_CLASS.test(attribs.class ?? '') || attribs.hidden != null || /display\s*:\s*none/i.test(attribs.style ?? '')) {
+      if (DROP.has(name) || isJunkClass(attribs.class) || attribs.hidden != null || /display\s*:\s*none/i.test(attribs.style ?? '')) {
         removeNode(child);
         continue;
       }
@@ -222,6 +245,9 @@ export function sanitizeHtml(input: string, baseUrl: string | null): SanitizedCo
       const next: Record<string, string> = {};
       for (const key of allowed) if (attribs[key] != null) next[key] = attribs[key]!;
       if (KEEP_ID && attribs.id) next.id = attribs.id;
+      // Declared text direction (Arabic, Hebrew…) survives; anything else is dropped.
+      const dir = attribs.dir?.trim().toLowerCase();
+      if (dir && DIR_VALUES.has(dir)) next.dir = dir;
       if (embedClass) next.class = embedClass;
       if (name === 'span' && /embed-label/.test(attribs.class ?? '')) next.class = 'embed-label';
       if (name === 'a') {
@@ -257,8 +283,16 @@ export function sanitizeHtml(input: string, baseUrl: string | null): SanitizedCo
       (a.srcset || a['data-srcset'] ? bestFromSrcset(a.srcset ?? a['data-srcset']!) : null) ??
       a.src;
     const url = resolveUrl(candidate, baseUrl);
-    if (!url || isTrackingPixel(a, url) || (images.length >= MAX_IMAGES && !seenImages.has(url))) {
+    if (!url || isTrackingPixel(a, url)) {
       removeNode(img);
+      return;
+    }
+    if (images.length >= MAX_IMAGES && !seenImages.has(url)) {
+      // Past the download cap the image stays, loaded from the web when online.
+      // Without data-remote the image stage leaves it alone.
+      const remoteOnly: Record<string, string> = { src: url, loading: 'lazy' };
+      if (a.alt) remoteOnly.alt = a.alt;
+      img.attribs = remoteOnly;
       return;
     }
     let index = seenImages.get(url);

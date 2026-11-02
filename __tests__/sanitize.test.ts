@@ -89,3 +89,44 @@ describe('withVideoLead', () => {
     expect(withVideoLead('<p>x</p>', 'https://example.com/a')).toBe('<p>x</p>');
   });
 });
+
+describe('sanitizeHtml content rules', () => {
+  it('drops share and social bars by class token, but not classes that merely contain the words', () => {
+    const out = sanitizeHtml(
+      '<div class="social-media-post"><p>Kept post</p></div>' +
+        '<div class="share-buttons"><p>Share!</p></div>' +
+        '<div class="sharedaddy"><p>Share again</p></div>' +
+        '<div class="entry post-share"><p>Share three</p></div>' +
+        '<div class="social"><p>Follow us</p></div>' +
+        '<p class="socially-distanced">Kept too</p>',
+      BASE,
+    );
+    expect(out.text).toBe('Kept post\nKept too');
+  });
+
+  it('keeps images past the download cap as remote-only images', () => {
+    const imgs = Array.from({ length: 32 }, (_, i) => `<img src="/i${i}.jpg">`).join('');
+    const out = sanitizeHtml(`<p>${imgs}</p>`, BASE);
+    expect(out.images).toHaveLength(30);
+    expect(out.html).toContain('src="feedline-img:29"');
+    expect(out.html).toContain('<img src="https://blog.example.com/i30.jpg" loading="lazy">');
+    expect(out.html).toContain('<img src="https://blog.example.com/i31.jpg" loading="lazy">');
+  });
+
+  it('tells tracking pixels from real images by whole path segments', () => {
+    const out = sanitizeHtml(
+      '<img src="https://cdn.test/pixel-art/cat.gif">' +
+        '<img src="https://mail.test/open/abc">' +
+        '<img src="https://mail.test/track.gif">' +
+        '<img src="https://cdn.test/open/photo.jpg">' +
+        '<img src="https://cdn.test/pixel" width="600" height="400">',
+      BASE,
+    );
+    expect(out.images).toEqual(['https://cdn.test/pixel-art/cat.gif', 'https://cdn.test/open/photo.jpg', 'https://cdn.test/pixel']);
+  });
+
+  it('keeps a declared text direction and nothing else in dir', () => {
+    const out = sanitizeHtml('<p dir="rtl">مرحبا</p><p dir="sideways">x</p>', BASE);
+    expect(out.html).toBe('<p dir="rtl">مرحبا</p><p>x</p>');
+  });
+});
