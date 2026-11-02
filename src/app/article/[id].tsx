@@ -3,7 +3,7 @@ import * as Haptics from 'expo-haptics';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ArrowLeft, Bookmark, CheckCheck, ChevronLeft, ChevronRight, CircleDot, ExternalLink, Share2, Type } from 'lucide-react-native';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, AppState, BackHandler, StyleSheet, useWindowDimensions, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -11,11 +11,11 @@ import { IconButton } from '@/components/IconButton';
 import { ReaderSettingsSheet } from '@/components/ReaderSettingsSheet';
 import { Text } from '@/components/Text';
 import { showToast, useToastLift } from '@/components/Toast';
-import { getArticle, setRead, setSaved } from '@/db/articles';
+import { getArticle, saveReadPosition, setRead, setSaved } from '@/db/articles';
 import type { ArticleFull } from '@/db/types';
 import { useQuery } from '@/db/useQuery';
 import { imageDownloadsAllowed } from '@/feeds/images';
-import { makeOffline } from '@/feeds/refresh';
+import { makeOffline, type FullTextOutcome } from '@/feeds/refresh';
 import { openInBrowser, shareArticle } from '@/lib/articleActions';
 import { WebView, type WebViewHandle, type WebViewMessageEvent } from '@/lib/webview';
 import { readerHtml, type ReaderMessage } from '@/reader/template';
@@ -66,7 +66,13 @@ export default function ReaderScreen() {
   const onMessage = useCallback(
     (msg: ReaderMessage) => {
       if (msg.type === 'meta') scrollState.current.titleBottom = msg.titleBottom;
-      else if (msg.type === 'scroll') {
+      else if (msg.type === 'lightbox') chrome.set(withTiming(msg.open ? 0 : 1, { duration: 180 }));
+      else if (msg.type === 'scroll' && msg.restored) {
+        // Returning to a saved position isn't the reader scrolling: keep the bars.
+        scrollState.current.lastY = msg.y;
+        titleShown.set(msg.y > scrollState.current.titleBottom - 20 ? 1 : 0);
+        progress.set(msg.max > 0 ? Math.min(1, msg.y / msg.max) : 0);
+      } else if (msg.type === 'scroll') {
         const s = scrollState.current;
         const dy = msg.y - s.lastY;
         const atEnd = msg.max > 0 && msg.y >= msg.max - 48;
@@ -181,14 +187,52 @@ type PageProps = {
 const ReaderPage = memo(function ReaderPage({ articleId, topInset, onMessage }: PageProps) {
   const theme = useTheme();
   const ref = useRef<WebViewHandle>(null);
+  // The system font size scales the reader too, on top of its own size setting.
+  const { fontScale } = useWindowDimensions();
   const size = useSettings((s) => s.readerSize);
   const lineHeight = useSettings((s) => s.readerLineHeight);
   const family = useSettings((s) => s.readerFamily);
   const [article, setArticle] = useState<ArticleFull | null | undefined>(undefined);
   const [loaded, setLoaded] = useState(false);
   const [fetching, setFetching] = useState(false);
+  /** The last full-text attempt couldn't reach the site (this session only). */
+  const [unreachable, setUnreachable] = useState(false);
+  /**
+   * Scroll position to keep when the page is rebuilt (notice shown, full text
+   * arrived). Captured in the same update that triggers the rebuild.
+   */
+  const [keepY, setKeepY] = useState<number | null>(null);
   const markedRead = useRef(false);
   const autoFetched = useRef(false);
+  const mounted = useRef(true);
+  /** Latest scroll position the page reported; null until it reports one. */
+  const lastScroll = useRef<{ y: number; max: number } | null>(null);
+  const lightboxOpen = useRef(false);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  // Remember the position when leaving the article or the app. A page never
+  // scrolled keeps whatever was saved before.
+  const savePosition = useCallback(() => {
+    const s = lastScroll.current;
+    if (!s) return;
+    const fraction = s.max > 0 ? s.y / s.max : 0;
+    saveReadPosition(articleId, fraction < 0.03 || fraction > 0.97 ? null : fraction).catch(() => {});
+  }, [articleId]);
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') savePosition();
+    });
+    return () => {
+      sub.remove();
+      savePosition();
+    };
+  }, [savePosition]);
 
   // Load once. Later background updates (images finishing) must not reload the
   // page under the reader's finger; local and remote images both work.
@@ -211,15 +255,27 @@ const ReaderPage = memo(function ReaderPage({ articleId, topInset, onMessage }: 
 
   const fetchFull = useCallback(
     async (fromUser: boolean) => {
-      const imagesAllowed = await imageDownloadsAllowed();
+      setKeepY(lastScroll.current?.y ?? null);
       setFetching(true);
-      await makeOffline(articleId, imagesAllowed, { forceFullText: true, priority: true });
-      const updated = await getArticle(articleId);
-      // One state update swaps the notice for the full text in a single reload.
-      setArticle(updated);
+      let outcome: FullTextOutcome = 'skipped';
+      let updated: ArticleFull | null | undefined;
+      try {
+        const imagesAllowed = await imageDownloadsAllowed();
+        outcome = await makeOffline(articleId, imagesAllowed, { forceFullText: true, priority: true });
+        updated = await getArticle(articleId);
+      } catch {
+        // Whatever failed, the spinner must not stay up; the teaser is still readable.
+      }
+      if (!mounted.current) return;
+      // These updates land together, so the notice and the new text swap in one reload.
+      setKeepY(lastScroll.current?.y ?? null);
+      if (updated !== undefined) setArticle(updated);
+      setUnreachable(outcome === 'unreachable');
       setFetching(false);
-      if (fromUser && updated?.content_status === 'feed') showToast('This is already the whole article');
-      else if (fromUser && updated?.content_status !== 'full') showToast('Couldn’t get the full article. Try “Open original”.');
+      if (!fromUser) return;
+      if (outcome === 'unreachable') showToast('Couldn’t reach the site. Check your connection.');
+      else if (updated?.content_status === 'feed') showToast('This is already the whole article');
+      else if (updated?.content_status !== 'full') showToast('Couldn’t get the full article. Try “Open original”.');
     },
     [articleId],
   );
@@ -240,9 +296,14 @@ const ReaderPage = memo(function ReaderPage({ articleId, topInset, onMessage }: 
     if (!article) return null;
     const notice = fetching
       ? { text: 'Getting the full article…', action: null, busy: true }
-      : article.content_status === 'failed' && article.url
-        ? { text: 'Showing the feed’s summary', action: 'Try again' }
-        : null;
+      : unreachable && article.url && article.content_status !== 'full'
+        ? { text: 'Couldn’t reach the site', action: 'Try again' }
+        : article.content_status === 'failed' && article.url
+          ? { text: 'Showing the feed’s summary', action: 'Try again' }
+          : null;
+    // A rebuild (full text arrived, notice changed) keeps the reader's place;
+    // a first load returns to where an earlier visit left off.
+    const restore = keepY !== null ? { y: keepY } : article.read_pos ? { fraction: article.read_pos } : null;
     return readerHtml(
       {
         title: article.title,
@@ -254,6 +315,7 @@ const ReaderPage = memo(function ReaderPage({ articleId, topInset, onMessage }: 
         readingMinutes: article.reading_minutes,
         contentHtml: article.content_html ?? '',
         notice,
+        restore,
       },
       theme,
       // Read at build time only: later changes are applied live via __setPrefs.
@@ -264,7 +326,24 @@ const ReaderPage = memo(function ReaderPage({ articleId, topInset, onMessage }: 
       }))(useSettings.getState()),
       topInset,
     );
-  }, [article, fetching, theme, topInset]);
+  }, [article, fetching, unreachable, keepY, theme, topInset]);
+
+  // A reload drops an open image viewer, so the toolbars and Back must follow.
+  const closeLightboxState = useCallback(() => {
+    if (!lightboxOpen.current) return;
+    lightboxOpen.current = false;
+    onMessage({ type: 'lightbox', open: false });
+  }, [onMessage]);
+  useEffect(() => closeLightboxState, [html, closeLightboxState]);
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (!lightboxOpen.current) return false;
+      ref.current?.injectJavaScript('window.__closeLightbox&&window.__closeLightbox(); true;');
+      closeLightboxState();
+      return true;
+    });
+    return () => sub.remove();
+  }, [closeLightboxState]);
 
   // Apply typography changes live without reloading.
   useEffect(() => {
@@ -291,8 +370,13 @@ const ReaderPage = memo(function ReaderPage({ articleId, topInset, onMessage }: 
       } catch {
         return;
       }
-      if (msg.type === 'notice') loadFull();
-      else onMessage(msg);
+      if (msg.type === 'notice') {
+        loadFull();
+        return;
+      }
+      if (msg.type === 'scroll') lastScroll.current = { y: msg.y, max: msg.max };
+      if (msg.type === 'lightbox') lightboxOpen.current = msg.open;
+      onMessage(msg);
     },
     [onMessage, loadFull],
   );
@@ -337,7 +421,7 @@ const ReaderPage = memo(function ReaderPage({ articleId, topInset, onMessage }: 
           allowUniversalAccessFromFileURLs={false}
           setSupportMultipleWindows={false}
           mixedContentMode="always"
-          textZoom={100}
+          textZoom={Math.round(fontScale * 100)}
           overScrollMode="never"
           showsVerticalScrollIndicator={false}
           setBuiltInZoomControls={false}

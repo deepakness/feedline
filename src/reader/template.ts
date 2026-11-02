@@ -17,13 +17,20 @@ export type ReaderDoc = {
   contentHtml: string;
   /** Shown above the body while full text is fetched, or when only the teaser is available. */
   notice: { text: string; action: string | null; busy?: boolean } | null;
+  /**
+   * Where to scroll once loaded: `y` (pixels, a reload in the same session) wins
+   * over `fraction` (of the page, saved from an earlier visit).
+   */
+  restore?: { y?: number; fraction?: number } | null;
 };
 
 /** Messages posted from the reader WebView to React Native. */
 export type ReaderMessage =
-  | { type: 'scroll'; y: number; max: number }
+  /** `restored`: caused by restoring the position, not by the reader's finger. */
+  | { type: 'scroll'; y: number; max: number; restored?: boolean }
   | { type: 'meta'; titleBottom: number }
-  | { type: 'notice' };
+  | { type: 'notice' }
+  | { type: 'lightbox'; open: boolean };
 
 function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -75,12 +82,12 @@ a img{margin-left:0;margin-right:0}
 figure{margin:1.6em 0}
 figure img{margin:0 auto}
 figure>a{display:block}
-figcaption{margin-top:.6em;font:400 13px/1.45 var(--sans);color:var(--ink3);text-align:left}
+figcaption{margin-top:.6em;font:400 13px/1.45 var(--sans);color:var(--ink3);text-align:start}
 figcaption:empty{display:none}
-blockquote{margin:1.4em 0;padding:0 0 0 1em;border-left:3px solid var(--quote);color:var(--ink2);font-style:italic}
+blockquote{margin:1.4em 0;padding:0;padding-inline-start:1em;border-inline-start:3px solid var(--quote);color:var(--ink2);font-style:italic}
 blockquote p:last-child{margin-bottom:0}
 hr{border:0;height:1px;background:var(--rule);margin:2.2em 20%}
-ul,ol{padding-left:1.3em;margin:0 0 1.05em}
+ul,ol{padding:0;padding-inline-start:1.3em;margin:0 0 1.05em}
 li{margin:.3em 0}
 li::marker{color:var(--ink3)}
 code,kbd,samp{font-family:ui-monospace,'Roboto Mono',monospace;font-size:.86em;background:var(--code);padding:.12em .35em;border-radius:5px}
@@ -88,7 +95,7 @@ pre{background:var(--code);padding:14px 16px;border-radius:12px;font-size:.8em;l
 pre code{background:none;padding:0;font-size:inherit}
 .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:1.4em 0;border:1px solid var(--rule);border-radius:10px}
 table{border-collapse:collapse;font:400 14px/1.45 var(--sans);min-width:100%;width:max-content}
-th,td{max-width:18em;padding:8px 12px;border-bottom:1px solid var(--rule);text-align:left;vertical-align:top}
+th,td{max-width:18em;padding:8px 12px;border-bottom:1px solid var(--rule);text-align:start;vertical-align:top}
 th{font-weight:600;background:var(--sunken)}
 tr:last-child td{border-bottom:0}
 a.embed{position:relative;display:block;margin:1.6em 0;border-radius:12px;overflow:hidden;background:var(--ink);text-decoration:none;aspect-ratio:16/9}
@@ -101,21 +108,44 @@ a.embed .embed-label{position:absolute;left:14px;bottom:12px;font:600 12px/16px 
 a.embed.embed-noimg{aspect-ratio:auto;padding:28px 18px 44px;background:var(--sunken)}
 a.embed.embed-noimg .embed-label{color:var(--ink)}
 .end{margin:44px auto 0;width:36px;height:1px;background:var(--rule)}
+article img:not(.broken){cursor:zoom-in}
+html.lb-open,html.lb-open body{overflow:hidden}
+.lightbox{position:fixed;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;overflow:auto;background:rgba(12,11,10,.94);-webkit-overflow-scrolling:touch}
+.lightbox img{display:block;margin:0;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;border-radius:0;background:none}
+.lightbox.zoomed{display:block}
+.lightbox.zoomed img{max-width:none;max-height:none}
+.lightbox button{position:fixed;top:${Math.max(12, topInset - 40)}px;right:14px;width:44px;height:44px;border:0;border-radius:22px;
+  background:rgba(255,255,255,.16);color:#fff;font:400 20px/44px var(--sans);text-align:center;padding:0}
 `;
 }
 
-const BRIDGE = `
+const bridge = (restore: ReaderDoc['restore']) => `
 (function(){
   var post=function(m){window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify(m));};
-  var ticking=false;
+  var ticking=false,restoring=false,touched=false;
   window.addEventListener('scroll',function(){
     if(ticking)return;ticking=true;
     requestAnimationFrame(function(){
       ticking=false;
       var el=document.scrollingElement;
-      post({type:'scroll',y:el.scrollTop,max:Math.max(0,el.scrollHeight-el.clientHeight)});
+      post({type:'scroll',y:el.scrollTop,max:Math.max(0,el.scrollHeight-el.clientHeight),restored:restoring});
+      restoring=false;
     });
   },{passive:true});
+  // Return to where the reader was: once the text is laid out, and again when
+  // images have loaded and moved things, unless the reader has started scrolling.
+  var R=${JSON.stringify(restore ?? null)};
+  window.addEventListener('touchstart',function(){touched=true;},{passive:true,capture:true});
+  var applyRestore=function(){
+    if(!R||touched)return;
+    var el=document.scrollingElement,max=el.scrollHeight-el.clientHeight;
+    if(max<=0)return;
+    var y=Math.min(max,R.y!=null?R.y:(R.fraction||0)*max);
+    if(Math.abs(el.scrollTop-y)<2)return;
+    restoring=true;el.scrollTop=y;
+  };
+  document.addEventListener('DOMContentLoaded',applyRestore);
+  window.addEventListener('load',applyRestore);
   var sendMeta=function(){
     var t=document.querySelector('h1.title');
     post({type:'meta',titleBottom:t?t.getBoundingClientRect().bottom+window.scrollY:0});
@@ -143,8 +173,37 @@ const BRIDGE = `
   })();
   document.addEventListener('click',function(e){
     var a=e.target.closest&&e.target.closest('a[data-action]');
-    if(a){e.preventDefault();post({type:a.getAttribute('data-action')});}
+    if(a){e.preventDefault();post({type:a.getAttribute('data-action')});return;}
+    var t=e.target;
+    if(!lb&&t&&t.tagName==='IMG'&&t.closest('article')&&!t.closest('a')&&!t.classList.contains('broken')&&t.getAttribute('src')){
+      e.preventDefault();openLightbox(t);
+    }
   });
+  // Image viewer: fits the screen; a tap on the image shows it larger to pan
+  // around; a tap elsewhere, the close button or Back (via RN) closes it.
+  var lb=null;
+  var openLightbox=function(from){
+    lb=document.createElement('div');lb.className='lightbox';
+    var img=document.createElement('img');img.src=from.currentSrc||from.src;img.alt=from.alt||'';
+    var close=document.createElement('button');close.type='button';close.setAttribute('aria-label','Close');close.textContent='\u2715';
+    lb.appendChild(img);lb.appendChild(close);document.body.appendChild(lb);
+    document.documentElement.classList.add('lb-open');
+    lb.addEventListener('click',function(e){
+      e.stopPropagation();
+      if(e.target!==img){window.__closeLightbox();return;}
+      var zoom=!lb.classList.contains('zoomed');
+      lb.classList.toggle('zoomed',zoom);
+      img.style.width=zoom?Math.max(img.naturalWidth,lb.clientWidth*2)+'px':'';
+      if(zoom){lb.scrollLeft=(lb.scrollWidth-lb.clientWidth)/2;lb.scrollTop=(lb.scrollHeight-lb.clientHeight)/2;}
+    });
+    post({type:'lightbox',open:true});
+  };
+  window.__closeLightbox=function(){
+    if(!lb)return;
+    lb.remove();lb=null;
+    document.documentElement.classList.remove('lb-open');
+    post({type:'lightbox',open:false});
+  };
   window.__setPrefs=function(p){
     var s=document.documentElement.style;
     s.setProperty('--size',p.size+'px');
@@ -169,7 +228,7 @@ export function readerHtml(doc: ReaderDoc, theme: Theme, prefs: ReaderPrefs, top
     ? `<div class="notice${doc.notice.busy ? ' busy' : ''}"><span>${esc(doc.notice.text)}${doc.notice.action ? ` · <a href="#" data-action="notice">${esc(doc.notice.action)}</a>` : ''}</span></div>`
     : '';
   return `<!doctype html>
-<html lang="en"><head>
+<html><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src file: data: https: http:; style-src 'unsafe-inline'; font-src data:; script-src 'unsafe-inline'; media-src 'none'; frame-src 'none'; connect-src 'none'; form-action 'none'">
@@ -177,14 +236,14 @@ export function readerHtml(doc: ReaderDoc, theme: Theme, prefs: ReaderPrefs, top
 </head><body>
 <main>
 <header class="meta">
-<div class="source">${icon}<span>${esc(doc.feedName)}</span></div>
-<h1 class="title">${esc(doc.title)}</h1>
-<div class="byline">${byline}</div>
+<div class="source">${icon}<span dir="auto">${esc(doc.feedName)}</span></div>
+<h1 class="title" dir="auto">${esc(doc.title)}</h1>
+<div class="byline" dir="auto">${byline}</div>
 </header>
 ${notice}
-<article>${doc.contentHtml || '<p style="color:var(--ink3)">This article has no content in the feed.</p>'}</article>
+<article dir="auto">${doc.contentHtml || '<p style="color:var(--ink3)">This article has no content in the feed.</p>'}</article>
 <div class="end"></div>
 </main>
-<script>${BRIDGE}</script>
+<script>${bridge(doc.restore)}</script>
 </body></html>`;
 }

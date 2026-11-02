@@ -44,13 +44,21 @@ export async function countArticles(filter: ArticleFilter): Promise<{ total: num
 
 export function getArticle(id: number): Promise<ArticleFull | null> {
   return db().getFirstAsync<ArticleFull>(
-    `SELECT ${LIST_COLUMNS}, a.author, b.content_html, a.content_status,
+    `SELECT ${LIST_COLUMNS}, a.author, b.content_html, a.content_status, a.read_pos,
        f.site_url AS feed_site_url, f.full_text_mode
      FROM articles a JOIN feeds f ON f.id = a.feed_id
      LEFT JOIN article_bodies b ON b.article_id = a.id
      WHERE a.id = ?`,
     [id],
   );
+}
+
+/**
+ * Remembers how far down an article the reader got (a fraction of the page, or
+ * null for the top). Nothing listens for it, so no change is broadcast.
+ */
+export async function saveReadPosition(id: number, fraction: number | null) {
+  await write((conn) => conn.runAsync('UPDATE articles SET read_pos = ? WHERE id = ?', [fraction, id]));
 }
 
 export async function setRead(ids: number[], read: boolean) {
