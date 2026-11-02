@@ -1,4 +1,7 @@
 import { decodeBody } from './decode';
+import { FetchError } from './errors';
+
+export { FetchError, isTransient, type FetchErrorKind } from './errors';
 
 // An honest feed-reader UA. Pretending to be Chrome gets flagged by bot checks
 // (e.g. Hacker News answers 419) because the rest of the request isn't Chrome's.
@@ -20,15 +23,6 @@ export type FetchResult =
       lastModified: string | null;
     };
 
-export class FetchError extends Error {
-  constructor(
-    message: string,
-    readonly status?: number,
-  ) {
-    super(message);
-  }
-}
-
 const MAX_BYTES = 8 * 1024 * 1024;
 
 export async function fetchText(
@@ -49,28 +43,50 @@ export async function fetchText(
   if (opts.etag) headers['If-None-Match'] = opts.etag;
   if (opts.lastModified) headers['If-Modified-Since'] = opts.lastModified;
 
+  let res: Response;
+  let buffer: ArrayBuffer;
   try {
-    const res = await fetch(url, { headers, signal: controller.signal, redirect: 'follow' });
+    res = await fetch(url, { headers, signal: controller.signal, redirect: 'follow' });
     if (res.status === 304) return { status: 'not-modified', url: res.url || url };
-    if (!res.ok) throw new FetchError(httpMessage(res.status), res.status);
-    const buffer = await res.arrayBuffer();
-    if (buffer.byteLength > MAX_BYTES) throw new FetchError('Response is too large');
-    const contentType = res.headers.get('content-type') ?? '';
-    return {
-      status: 'ok',
-      url: res.url || url,
-      body: decodeBody(new Uint8Array(buffer), contentType),
-      contentType,
-      etag: res.headers.get('etag'),
-      lastModified: res.headers.get('last-modified'),
-    };
+    if (!res.ok) {
+      const retryAfter = res.status === 429 || res.status === 503 ? parseRetryAfter(res.headers.get('retry-after')) : undefined;
+      throw new FetchError(httpMessage(res.status), { kind: 'http', status: res.status, retryAfter });
+    }
+    // React Native's fetch can't stream a body, so a declared size is the only
+    // check possible before reading; chunked responses are checked after.
+    const declared = Number(res.headers.get('content-length'));
+    if (declared > MAX_BYTES) {
+      controller.abort();
+      throw new FetchError('Response is too large', { kind: 'content' });
+    }
+    buffer = await res.arrayBuffer();
   } catch (error) {
     if (error instanceof FetchError) throw error;
-    if (controller.signal.aborted) throw new FetchError('Timed out');
-    throw new FetchError(offlineHint(error));
+    if (controller.signal.aborted) throw new FetchError('Timed out', { kind: 'timeout' });
+    throw new FetchError(offlineHint(error), { kind: 'network' });
   } finally {
     clearTimeout(timer);
   }
+  if (buffer.byteLength > MAX_BYTES) throw new FetchError('Response is too large', { kind: 'content' });
+  const contentType = res.headers.get('content-type') ?? '';
+  return {
+    status: 'ok',
+    url: res.url || url,
+    // Outside the try: a decoding failure is about the content, not the network.
+    body: decodeBody(new Uint8Array(buffer), contentType),
+    contentType,
+    etag: res.headers.get('etag'),
+    lastModified: res.headers.get('last-modified'),
+  };
+}
+
+/** Retry-After is either seconds or an HTTP date. Returns seconds, or undefined. */
+export function parseRetryAfter(value: string | null, now = Date.now()): number | undefined {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  const at = Date.parse(trimmed);
+  return Number.isNaN(at) ? undefined : Math.max(0, Math.round((at - now) / 1000));
 }
 
 function httpMessage(status: number): string {
