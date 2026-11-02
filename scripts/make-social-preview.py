@@ -1,4 +1,4 @@
-"""Draws .github/social-preview.png (upload it in GitHub repo settings) from the icon and screenshots."""
+"""Draws .github/social-preview.png (upload it in GitHub repo settings) from the icon, screenshots and Play badge."""
 import pathlib
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 root = str(pathlib.Path(__file__).resolve().parent.parent)
@@ -6,14 +6,20 @@ F = root + '/node_modules/@expo-google-fonts'
 W, H = 1280, 640
 PAPER, INK, INK2, INK3, HAIR, ACC, BLUSH = '#FAF7F2', '#1D1B18', '#5C564E', '#9A9288', '#E6DFD3', '#B4532A', '#F3E3D9'
 shots = {n: Image.open(f'{root}/.github/screenshots/{n}.png').convert('RGB') for n in ['timeline', 'reader']}
-iconsrc = Image.open(f'{root}/assets/icon.png').convert('RGB')
+# The light icon (splash mark on paper) reads better on terracotta than the app icon does.
+iconsrc = Image.new('RGBA', (512, 512), PAPER)
+iconsrc.alpha_composite(Image.open(f'{root}/assets/splash-icon.png').convert('RGBA'))
+iconsrc = iconsrc.convert('RGB')
+# Official badge, trimmed to its visible edge (the file has transparent padding).
+badge = Image.open(f'{root}/.github/google-play-badge.png').convert('RGBA')
+badge = badge.crop(badge.getchannel('A').getbbox())
 
 def font(path, size): return ImageFont.truetype(f'{F}/{path}', size)
 SERIF = 'newsreader/600SemiBold/Newsreader_600SemiBold.ttf'
 REG = 'inter/400Regular/Inter_400Regular.ttf'
 MED = 'inter/500Medium/Inter_500Medium.ttf'
 
-def icon(img, x, y, n, border=HAIR):
+def icon(img, x, y, n, border=None):
     ic = iconsrc.resize((n, n), Image.LANCZOS)
     m = Image.new('L', (n, n), 0)
     ImageDraw.Draw(m).rounded_rectangle((0, 0, n - 1, n - 1), radius=int(n * .23), fill=255)
@@ -79,13 +85,15 @@ PADX, PADY = 150, 72
 def v4():
     img = Image.new('RGB', (W, H), ACC); d = ImageDraw.Draw(img)
     # Text block, vertically centred.
-    top = (H - 420) // 2
-    icon(img, PADX, top, 96, border='#F7E6DB')
+    BH = 56
+    top = (H - (384 + BH)) // 2
+    icon(img, PADX, top, 96)
     text(d, (PADX - 4, top + 112), 'Feedline', font(SERIF, 96), PAPER)
     text(d, (PADX, top + 246), 'A calm, offline-first', font(REG, 28), '#F7E6DB')
     text(d, (PADX, top + 284), 'RSS reader for Android', font(REG, 28), '#F7E6DB')
     text(d, (PADX, top + 344), 'No accounts. No servers. No tracking.', font(MED, 21), INK)
-    text(d, (PADX, top + 396), 'github.com/deepakness/feedline', font(REG, 19), '#F1CFBC')
+    b = badge.resize((round(badge.width * BH / badge.height), BH), Image.LANCZOS)
+    img.paste(b, (PADX, top + 384), b)
     # Phones: rotated first, then sized so both fit inside the padding.
     front = phone_img('reader', 200).rotate(-7, resample=Image.BICUBIC, expand=True)
     back = phone_img('timeline', 210).rotate(6, resample=Image.BICUBIC, expand=True)
