@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.5 (versionCode 17)
+
+- Background refresh no longer stalls when Feedline is still in memory: new articles arrive without opening the app
+- The image viewer's background is darker, so the article no longer shows through
+
 ## 1.1.4 (versionCode 16)
 
 - Articles reopen where you left off, and the page no longer jumps to the top when the full text arrives
