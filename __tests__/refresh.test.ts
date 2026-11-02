@@ -39,10 +39,14 @@ jest.mock('expo-sqlite/kv-store', () => ({
 }));
 jest.mock('expo-file-system', () => ({ Directory: class {}, File: class {}, Paths: {} }));
 jest.mock('expo-network', () => ({ getNetworkStateAsync: async () => ({}), NetworkStateType: {} }));
-jest.mock('@/extract/extractor', () => ({ extractArticle: async () => null }));
+jest.mock('@/extract/extractor', () => ({
+  extractArticle: async () => mockExtracted,
+  whenExtractorReady: async () => true,
+}));
 jest.mock('@/feeds/images', () => ({
   imageDownloadsAllowed: async () => false,
-  localizeImages: async () => [],
+  isOnline: async () => mockOnline,
+  localizeImages: jest.fn(async (_id: number, urls: string[]) => urls.map(() => null)),
   localizeThumb: async () => null,
   downloadIcon: async () => null,
   deleteArticleImages: jest.fn(),
@@ -50,22 +54,35 @@ jest.mock('@/feeds/images', () => ({
 jest.mock('@/feeds/discover', () => ({ findSiteIcon: async () => null }));
 
 const mockNotModified = '\u0000304';
-const mockFeedBodies: Record<string, string> = {};
-jest.mock('@/feeds/fetch', () => ({
-  HTML_ACCEPT: '',
-  fetchText: async (url: string) => {
-    const body = mockFeedBodies[url];
-    if (body === undefined) throw new Error('Network unavailable');
-    if (body === mockNotModified) return { status: 'not-modified' };
-    return { status: 'ok', url, body, contentType: 'application/rss+xml', etag: null, lastModified: null };
-  },
-}));
+/** A body, or an HTTP status to fail with (e.g. 404, 429). Missing means "Network unavailable". */
+const mockFeedBodies: Record<string, string | number> = {};
+let mockOnline = true;
+let mockExtracted: { title: null; byline: null; content: string; length: number } | null = null;
+jest.mock('@/feeds/fetch', () => {
+  const actual = jest.requireActual('@/feeds/errors') as typeof import('@/feeds/errors');
+  return {
+    HTML_ACCEPT: '',
+    FetchError: actual.FetchError,
+    isTransient: actual.isTransient,
+    fetchText: async (url: string) => {
+      const body = mockFeedBodies[url];
+      if (body === undefined) throw new actual.FetchError('Network unavailable', { kind: 'network' });
+      if (typeof body === 'number') {
+        throw new actual.FetchError(`HTTP ${body}`, { kind: 'http', status: body, retryAfter: body === 429 ? 120 : undefined });
+      }
+      if (body === mockNotModified) return { status: 'not-modified' };
+      return { status: 'ok', url, body, contentType: 'application/rss+xml', etag: null, lastModified: null };
+    },
+  };
+});
 
 import { listArticles, markAllRead, searchArticles, setRead, setSaved } from '@/db/articles';
 import { db, getDb } from '@/db/client';
 import { getFeed, insertFeed, sortFeeds } from '@/db/feeds';
 import type { FeedSummary } from '@/db/types';
-import { refreshFeeds } from '@/feeds/refresh';
+import { localizeImages } from '@/feeds/images';
+import { makeOffline, refreshFeeds, refreshOne } from '@/feeds/refresh';
+import { applyRetention, countExpired } from '@/feeds/retention';
 import { settings } from '@/state/settings';
 
 const DAY = 864e5;
@@ -204,4 +221,196 @@ it('sorts feeds by unread, keeping name order for ties', () => {
   const byName = [feed('Alpha', 1), feed('Beta', 5), feed('Gamma', 1)];
   expect(sortFeeds(byName, 'unread').map((f) => f.name)).toEqual(['Beta', 'Alpha', 'Gamma']);
   expect(sortFeeds(byName, 'name')).toBe(byName);
+});
+
+type FeedState = { fail_count: number; retry_after: number | null };
+const feedState = (id: number) => db().getFirstAsync<FeedState>('SELECT fail_count, retry_after FROM feeds WHERE id = ?', [id]);
+
+it('backs off a feed after repeated HTTP failures, and resets on success', async () => {
+  const url = 'https://dead.test/feed';
+  const id = await insertFeed({ url });
+  mockFeedBodies[url] = 404;
+  for (let i = 0; i < 2; i++) await refreshFeeds([id]);
+  expect(await feedState(id)).toEqual({ fail_count: 2, retry_after: null });
+
+  await refreshFeeds([id]);
+  const held = (await feedState(id))!;
+  expect(held.fail_count).toBe(3);
+  expect(held.retry_after).toBeGreaterThan(Date.now() + 5 * 3600e3);
+
+  // Held back: an automatic refresh skips it entirely.
+  expect(await refreshFeeds([id])).toEqual(expect.objectContaining({ feeds: 0, failedFeeds: 0 }));
+  expect((await feedState(id))!.fail_count).toBe(3);
+  // The user tapping Refresh tries it anyway.
+  expect(await refreshFeeds([id], { includeHeld: true })).toEqual(expect.objectContaining({ feeds: 1, failedFeeds: 1 }));
+  expect((await feedState(id))!.fail_count).toBe(4);
+
+  // Refreshing the one feed by hand always tries, and success clears the backoff.
+  mockFeedBodies[url] = rss([{ guid: 'd1', title: 'Back again', ageDays: 0 }]);
+  expect((await refreshOne(id)).error).toBeNull();
+  expect(await feedState(id)).toEqual({ fail_count: 0, retry_after: null });
+});
+
+it('counts connection failures only when other feeds got through', async () => {
+  const gone = await insertFeed({ url: 'https://no-such-host.test/feed' });
+  const fine = await insertFeed({ url: 'https://fine.test/feed' });
+  mockFeedBodies['https://fine.test/feed'] = rss([{ guid: 'f1', title: 'Fine', ageDays: 0 }]);
+
+  // Everything failing looks like being offline: nothing is held against the feed.
+  await refreshFeeds([gone]);
+  expect((await feedState(gone))!.fail_count).toBe(0);
+
+  await refreshFeeds([gone, fine]);
+  expect((await feedState(gone))!.fail_count).toBe(1);
+  expect((await feedState(fine))!.fail_count).toBe(0);
+});
+
+it("honours a server's Retry-After", async () => {
+  const url = 'https://busy.test/feed';
+  const id = await insertFeed({ url });
+  mockFeedBodies[url] = 429;
+  await refreshFeeds([id]);
+  const state = (await feedState(id))!;
+  expect(state.retry_after).toBeGreaterThan(Date.now() + 100e3);
+  expect(state.retry_after).toBeLessThan(Date.now() + 130e3);
+});
+
+it('rewrites seen keys only when they are more than a day old', async () => {
+  const url = 'https://seen.test/feed';
+  const id = await insertFeed({ url });
+  mockFeedBodies[url] = rss([
+    { guid: 's1', title: 'Seen one', ageDays: 0 },
+    { guid: 's2', title: 'Seen two', ageDays: 0 },
+  ]);
+  await refreshFeeds([id]);
+  const hourAgo = Date.now() - 3600e3;
+  const twoDaysAgo = Date.now() - 2 * DAY;
+  const keys = await db().getAllAsync<{ key_hash: string }>('SELECT key_hash FROM seen_items WHERE feed_id = ? ORDER BY key_hash', [id]);
+  await db().runAsync('UPDATE seen_items SET last_seen_at = ? WHERE feed_id = ? AND key_hash = ?', [hourAgo, id, keys[0]!.key_hash]);
+  await db().runAsync('UPDATE seen_items SET last_seen_at = ? WHERE feed_id = ? AND key_hash = ?', [twoDaysAgo, id, keys[1]!.key_hash]);
+
+  await refreshFeeds([id]);
+  const after = await db().getAllAsync<{ last_seen_at: number }>('SELECT last_seen_at FROM seen_items WHERE feed_id = ? ORDER BY key_hash', [id]);
+  expect(after[0]!.last_seen_at).toBe(hourAgo);
+  expect(after[1]!.last_seen_at).toBeGreaterThan(Date.now() - 60e3);
+});
+
+it('counts and removes expired articles, keeping saved ones', async () => {
+  settings.set({ retentionDays: 0 });
+  const url = 'https://old.test/feed';
+  const feedId = await insertFeed({ url });
+  mockFeedBodies[url] = rss([
+    { guid: 'o1', title: 'Recent', ageDays: 1 },
+    { guid: 'o2', title: 'Two months', ageDays: 60 },
+    { guid: 'o3', title: 'Saved old', ageDays: 70 },
+  ]);
+  await refreshFeeds([feedId]);
+  const mine = async () => (await listArticles({ kind: 'feed', feedId, hideRead: false }, 10)).map((a) => a.title);
+  const saved = (await listArticles({ kind: 'feed', feedId, hideRead: false }, 10)).find((a) => a.title === 'Saved old')!;
+  await setSaved(saved.id, true);
+
+  expect(await countExpired(30)).toBe(1);
+  expect(await countExpired(0)).toBe(0);
+  settings.set({ retentionDays: 30 });
+  expect(await applyRetention()).toBe(1);
+  expect((await mine()).sort()).toEqual(['Recent', 'Saved old']);
+});
+
+describe('makeOffline', () => {
+  const statusOf = (id: number) =>
+    db().getFirstAsync<{ content_status: string; content_attempts: number; images_status: string; image_attempts: number }>(
+      'SELECT content_status, content_attempts, images_status, image_attempts FROM articles WHERE id = ?',
+      [id],
+    );
+  const bodyOf = async (id: number) =>
+    (await db().getFirstAsync<{ content_html: string }>('SELECT content_html FROM article_bodies WHERE article_id = ?', [id]))!.content_html;
+
+  let articleId = 0;
+  beforeAll(async () => {
+    const url = 'https://offline.test/feed';
+    const feedId = await insertFeed({ url });
+    mockFeedBodies[url] = rss([{ guid: 'm1', title: 'Make offline', ageDays: 0 }]);
+    await refreshFeeds([feedId]);
+    articleId = (await listArticles({ kind: 'feed', feedId, hideRead: false }, 1))[0]!.id;
+  });
+
+  it('keeps full text queued through connection failures, then gives up', async () => {
+    await db().runAsync(`UPDATE articles SET content_status = 'pending', content_attempts = 0 WHERE id = ?`, [articleId]);
+    // The article page (https://site.test/m1) isn't served: a connection failure.
+    expect(await makeOffline(articleId, false)).toBe('unreachable');
+    expect(await statusOf(articleId)).toEqual(expect.objectContaining({ content_status: 'pending', content_attempts: 1 }));
+
+    // With no connection at all, nothing is used up.
+    mockOnline = false;
+    expect(await makeOffline(articleId, false)).toBe('unreachable');
+    expect((await statusOf(articleId))!.content_attempts).toBe(1);
+    mockOnline = true;
+
+    for (let i = 0; i < 4; i++) await makeOffline(articleId, false);
+    expect(await statusOf(articleId)).toEqual(expect.objectContaining({ content_status: 'failed', content_attempts: 5 }));
+  });
+
+  it('stores full text when the page yields a longer article', async () => {
+    await db().runAsync(`UPDATE articles SET content_status = 'pending' WHERE id = ?`, [articleId]);
+    mockFeedBodies['https://site.test/m1'] = '<html><body>page</body></html>';
+    mockExtracted = { title: null, byline: null, content: `<p>${'full sentence here. '.repeat(400)}</p>`, length: 8000 };
+    expect(await makeOffline(articleId, false)).toBe('full');
+    expect((await statusOf(articleId))!.content_status).toBe('full');
+    expect(await bodyOf(articleId)).toContain('full sentence here.');
+    mockExtracted = null;
+    delete mockFeedBodies['https://site.test/m1'];
+  });
+
+  it('localises images, but never over a body that changed meanwhile', async () => {
+    const remote = 'https://img.test/a.png';
+    const html = `<p><img src="${remote}" data-remote="${remote}"></p>`;
+    const reset = async () => {
+      await db().runAsync('UPDATE article_bodies SET content_html = ? WHERE article_id = ?', [html, articleId]);
+      await db().runAsync(`UPDATE articles SET content_status = 'feed', images_status = 'pending', image_attempts = 0 WHERE id = ?`, [articleId]);
+    };
+    const localize = localizeImages as jest.Mock;
+
+    await reset();
+    localize.mockImplementationOnce(async () => {
+      // Full text lands while the images download.
+      await db().runAsync(`UPDATE article_bodies SET content_html = '<p>new body</p>' WHERE article_id = ?`, [articleId]);
+      return ['images/1/a.png'];
+    });
+    await makeOffline(articleId, true);
+    expect(await bodyOf(articleId)).toBe('<p>new body</p>');
+    expect((await statusOf(articleId))!.images_status).toBe('pending');
+
+    await reset();
+    localize.mockImplementationOnce(async () => ['images/1/a.png']);
+    await makeOffline(articleId, true);
+    expect(await bodyOf(articleId)).toContain('src="images/1/a.png"');
+    expect(await statusOf(articleId)).toEqual(expect.objectContaining({ images_status: 'done', image_attempts: 1 }));
+  });
+
+  it('does nothing offline, so retries are not used up', async () => {
+    const remote = 'https://img.test/c.png';
+    await db().runAsync('UPDATE article_bodies SET content_html = ? WHERE article_id = ?', [
+      `<p><img src="${remote}" data-remote="${remote}"></p>`,
+      articleId,
+    ]);
+    await db().runAsync(`UPDATE articles SET content_status = 'pending', content_attempts = 0, images_status = 'pending', image_attempts = 0 WHERE id = ?`, [articleId]);
+    mockOnline = false;
+    try {
+      expect(await makeOffline(articleId, true)).toBe('unreachable');
+      expect(await statusOf(articleId)).toEqual({ content_status: 'pending', content_attempts: 0, images_status: 'pending', image_attempts: 0 });
+    } finally {
+      mockOnline = true;
+    }
+  });
+
+  it('retries partly downloaded images a few times', async () => {
+    const remote = 'https://img.test/b.png';
+    await db().runAsync('UPDATE article_bodies SET content_html = ? WHERE article_id = ?', [
+      `<p><img src="${remote}" data-remote="${remote}"></p>`,
+      articleId,
+    ]);
+    await db().runAsync(`UPDATE articles SET images_status = 'partial', image_attempts = 0 WHERE id = ?`, [articleId]);
+    for (let i = 0; i < 5; i++) await makeOffline(articleId, true);
+    expect(await statusOf(articleId)).toEqual(expect.objectContaining({ images_status: 'partial', image_attempts: 3 }));
+  });
 });

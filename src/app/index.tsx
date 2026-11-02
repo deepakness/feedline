@@ -289,7 +289,14 @@ export default function Timeline() {
       router.push('/feeds/add');
       return;
     }
-    const summary = await refreshFeeds();
+    let summary: Awaited<ReturnType<typeof refreshFeeds>>;
+    try {
+      // Asked for by the user, so feeds held back after repeated failures are tried too.
+      summary = await refreshFeeds(undefined, { includeHeld: true });
+    } catch {
+      showToast('Refresh failed');
+      return;
+    }
     if (!summary) return; // a refresh was already running
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     if (summary.failedFeeds) {

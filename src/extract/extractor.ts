@@ -23,9 +23,33 @@ const queue: Job[] = [];
 let active: Job | null = null;
 let seq = 0;
 
+const readyWaiters = new Set<() => void>();
+
 export function attachRunner(next: Runner | null) {
   runner = next;
-  if (runner) pump();
+  if (runner) {
+    for (const wake of [...readyWaiters]) wake();
+    pump();
+  }
+}
+
+/**
+ * Resolves true once the hidden extractor WebView is attached, or false after
+ * `timeoutMs`. It never attaches in a headless (background) run, and briefly
+ * not at all during a cold start or a WebView reload.
+ */
+export function whenExtractorReady(timeoutMs: number): Promise<boolean> {
+  if (runner) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const done = (ready: boolean) => {
+      readyWaiters.delete(wake);
+      clearTimeout(timer);
+      resolve(ready);
+    };
+    const wake = () => done(true);
+    const timer = setTimeout(() => done(false), timeoutMs);
+    readyWaiters.add(wake);
+  });
 }
 
 /** Called by the host when the WebView posts a result. */

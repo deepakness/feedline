@@ -16,9 +16,10 @@ TaskManager.defineTask(TASK, async () => {
   try {
     await getDb();
     if (!settings.get().backgroundRefresh || !(await listFeeds()).length) return BackgroundTask.BackgroundTaskResult.Success;
-    // Only the feed pass is awaited. Full text needs the extractor WebView, which
-    // exists only with the UI up; queued articles finish on the next launch.
-    await refreshFeeds();
+    // Only the feed pass runs. Full text needs the extractor WebView, which
+    // exists only with the UI up, so queued articles and images wait for the
+    // next launch instead of downloading pages that can't be processed here.
+    await refreshFeeds(undefined, { offline: false });
     return BackgroundTask.BackgroundTaskResult.Success;
   } catch {
     return BackgroundTask.BackgroundTaskResult.Failed;

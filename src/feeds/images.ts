@@ -26,6 +26,16 @@ function fileNameFor(url: string): string {
   return hash(url) + ext;
 }
 
+/** False only when Android reports no connection; unknown counts as online. */
+export async function isOnline(): Promise<boolean> {
+  try {
+    const state = await getNetworkStateAsync();
+    return state.isConnected !== false && state.isInternetReachable !== false;
+  } catch {
+    return true;
+  }
+}
+
 /** Whether images should be downloaded right now, per the user's image setting. */
 export async function imageDownloadsAllowed(): Promise<boolean> {
   const mode = settings.get().imageMode;
@@ -39,22 +49,54 @@ export async function imageDownloadsAllowed(): Promise<boolean> {
   }
 }
 
-async function download(url: string, target: File): Promise<boolean> {
+const MIN_BYTES = 64;
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
+const DOWNLOAD_TIMEOUT_MS = 30000;
+
+function remove(file: File) {
   try {
-    if (target.exists && target.size > 0) return true;
-    const file = await File.downloadFileAsync(url, target, { idempotent: true });
-    if (file.size < 64) {
-      file.delete();
+    if (file.exists) file.delete();
+  } catch {
+    // Already gone or locked; not worth failing a download for.
+  }
+}
+
+/**
+ * Downloads to a temporary `.part` file and renames it only when complete, so a
+ * download cut short (app killed, connection lost) never leaves a broken file
+ * that later runs would trust. Gives up on very large or stalled downloads.
+ */
+async function download(url: string, target: File): Promise<boolean> {
+  if (target.exists && (target.size ?? 0) >= MIN_BYTES) return true;
+  // Unique per call: the reader and the background pass can fetch the same image at once.
+  const part = new File(target.parentDirectory, `${target.name}.${Math.random().toString(36).slice(2, 10)}.part`);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
+  try {
+    const file = await File.downloadFileAsync(url, part, {
+      idempotent: true,
+      signal: controller.signal,
+      onProgress: ({ bytesWritten, totalBytes }) => {
+        if (bytesWritten > MAX_IMAGE_BYTES || totalBytes > MAX_IMAGE_BYTES) controller.abort();
+      },
+    });
+    if ((file.size ?? 0) < MIN_BYTES) {
+      remove(file);
       return false;
     }
+    if (target.exists && (target.size ?? 0) >= MIN_BYTES) {
+      // Another call finished first.
+      remove(file);
+      return true;
+    }
+    remove(target);
+    file.rename(target.name);
     return true;
   } catch {
-    try {
-      if (target.exists) target.delete();
-    } catch {
-      // ignore
-    }
+    remove(part);
     return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -102,6 +144,20 @@ export function iconsDir(): Directory {
   const dir = new Directory(Paths.document, 'icons');
   if (!dir.exists) dir.create({ intermediates: true, idempotent: true });
   return dir;
+}
+
+/**
+ * Removes `.part` files left in the icon folder by downloads cut short (the app
+ * was killed). Article folders go with their article, so only icons need this.
+ */
+export function sweepPartialDownloads() {
+  try {
+    for (const entry of iconsDir().list()) {
+      if (entry instanceof File && entry.name.endsWith('.part')) remove(entry);
+    }
+  } catch {
+    // Housekeeping only.
+  }
 }
 
 export async function downloadIcon(feedId: number, url: string): Promise<string | null> {

@@ -33,3 +33,30 @@ it('moves bodies out of articles without losing data or search', () => {
   expect(db.prepare('SELECT COUNT(*) AS n FROM article_bodies').get()).toEqual({ n: 0 });
   expect(db.prepare(`INSERT INTO articles_fts (articles_fts) VALUES ('integrity-check')`).run()).toBeTruthy();
 });
+
+it('adds reading position, retry counters and feed backoff without touching data', () => {
+  const db = new DatabaseSync(':memory:');
+  db.exec('PRAGMA foreign_keys = ON');
+  db.exec('BEGIN');
+  for (const m of MIGRATIONS.slice(0, 2)) db.exec(m);
+  db.exec('COMMIT');
+  db.exec(`INSERT INTO feeds (id, url, created_at) VALUES (1, 'https://f.test', 0)`);
+  db.exec(`INSERT INTO articles (id, feed_id, key_hash, title, published_at, fetched_at, is_saved) VALUES (3, 1, 'k', 'Kept', 1, 1, 1)`);
+
+  db.exec('BEGIN');
+  for (const m of MIGRATIONS.slice(2)) db.exec(m);
+  db.exec('COMMIT');
+
+  expect(db.prepare('SELECT title, is_saved, read_pos, content_attempts, image_attempts FROM articles WHERE id = 3').get()).toEqual({
+    title: 'Kept',
+    is_saved: 1,
+    read_pos: null,
+    content_attempts: 0,
+    image_attempts: 0,
+  });
+  expect(db.prepare('SELECT fail_count, retry_after, icon_tried_at FROM feeds WHERE id = 1').get()).toEqual({
+    fail_count: 0,
+    retry_after: null,
+    icon_tried_at: null,
+  });
+});

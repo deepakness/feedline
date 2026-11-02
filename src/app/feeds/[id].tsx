@@ -56,9 +56,14 @@ export default function FeedDetail() {
 
   const doRefresh = async () => {
     setRefreshing(true);
-    const r = await refreshOne(feed.id);
-    setRefreshing(false);
-    showToast(r.error ? r.error : r.added ? `${r.added} new ${r.added === 1 ? 'article' : 'articles'}` : 'No new articles');
+    try {
+      const r = await refreshOne(feed.id);
+      showToast(r.error ? r.error : r.added ? `${r.added} new ${r.added === 1 ? 'article' : 'articles'}` : 'No new articles');
+    } catch {
+      showToast('Refresh failed');
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const markRead = async () => {

@@ -126,4 +126,14 @@ export const MIGRATIONS: string[] = [
     DELETE FROM articles_fts WHERE rowid = old.id;
   END;
   `,
+  // Reading position, bounded retries for full text and images, and backoff for
+  // feeds that keep failing or have no icon.
+  `
+  ALTER TABLE articles ADD COLUMN read_pos REAL;
+  ALTER TABLE articles ADD COLUMN content_attempts INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE articles ADD COLUMN image_attempts INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE feeds ADD COLUMN fail_count INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE feeds ADD COLUMN retry_after INTEGER;
+  ALTER TABLE feeds ADD COLUMN icon_tried_at INTEGER;
+  `,
 ];

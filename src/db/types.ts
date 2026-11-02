@@ -23,6 +23,12 @@ export type FeedRow = {
   last_error: string | null;
   full_text_mode: FullTextMode;
   created_at: number;
+  /** HTTP or parse failures in a row (connection failures count only when other feeds got through). */
+  fail_count: number;
+  /** Skip this feed in full refreshes until then (backoff or the server's Retry-After). */
+  retry_after: number | null;
+  /** Last failed attempt to find the site's icon; retried weekly. */
+  icon_tried_at: number | null;
 };
 
 /** A feed as shown in lists: display title resolved, with unread count. */
@@ -61,6 +67,8 @@ export type ArticleFull = ArticleListItem & {
   content_status: ContentStatus;
   feed_site_url: string | null;
   full_text_mode: FullTextMode;
+  /** Where the reader left off, as a fraction of the page; null starts at the top. */
+  read_pos: number | null;
 };
 
 export type ArticleFilter = (

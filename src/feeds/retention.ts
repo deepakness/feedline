@@ -12,6 +12,16 @@ export function retentionCutoff(now = Date.now()): number | null {
   return days ? now - days * DAY : null;
 }
 
+/** How many articles a `days` window would remove now (saved ones are kept). */
+export async function countExpired(days: number, now = Date.now()): Promise<number> {
+  if (!days) return 0;
+  const row = await db().getFirstAsync<{ n: number }>(
+    'SELECT COUNT(*) AS n FROM articles WHERE is_saved = 0 AND published_at < ?',
+    [now - days * DAY],
+  );
+  return row?.n ?? 0;
+}
+
 /**
  * Deletes non-saved articles older than the retention window, plus their images.
  * `seen_items` keeps their keys, so the next refresh will not bring them back.

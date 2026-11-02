@@ -21,6 +21,7 @@ import { getDb } from '@/db/client';
 import { listFeeds } from '@/db/feeds';
 import { ExtractorHost } from '@/extract/ExtractorHost';
 import { syncBackgroundRefresh } from '@/feeds/background';
+import { sweepPartialDownloads } from '@/feeds/images';
 import { processPendingArticles, refreshFeeds } from '@/feeds/refresh';
 import { extractUrl } from '@/lib/url';
 import { useRefreshStore } from '@/state/refreshStore';
@@ -126,6 +127,7 @@ function RefreshOnOpen() {
     // Finish anything a previous session left half-downloaded, once the first
     // screen has had the JS thread to itself.
     const timer = setTimeout(() => {
+      sweepPartialDownloads();
       processPendingArticles().catch(() => {});
       maybeRefresh().catch(() => {});
     }, 1500);
