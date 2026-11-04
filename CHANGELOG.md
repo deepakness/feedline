@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.6 (versionCode 18)
+
+- Adding a feed brings in the posts it lists (up to 100), not only those from the last 30 days
+- "Load older posts" on a feed's page adds posts that earlier versions skipped
+- "Keep articles for" counts from when an article arrives, and each feed keeps its newest 20
+
 ## 1.1.5 (versionCode 17)
 
 - Background refresh no longer stalls when Feedline is still in memory: new articles arrive without opening the app
