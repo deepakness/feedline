@@ -12,28 +12,37 @@ export function retentionCutoff(now = Date.now()): number | null {
   return days ? now - days * DAY : null;
 }
 
-/** How many articles a `days` window would remove now (saved ones are kept). */
+/** Each feed keeps at least this many of its newest articles, so a quiet blog never empties. */
+export const KEEP_PER_FEED = 20;
+
+/**
+ * Articles a retention window removes: not saved, older than the window
+ * counted from when they arrived (an old post just imported gets the full
+ * window), and not among their feed's newest `KEEP_PER_FEED`.
+ */
+const EXPIRED = `SELECT id FROM articles
+  WHERE is_saved = 0 AND MAX(published_at, fetched_at) < ?
+    AND id NOT IN (
+      SELECT id FROM (
+        SELECT id, ROW_NUMBER() OVER (PARTITION BY feed_id ORDER BY published_at DESC, id DESC) AS rank FROM articles
+      ) WHERE rank <= ${KEEP_PER_FEED}
+    )`;
+
+/** How many articles a `days` window would remove now. */
 export async function countExpired(days: number, now = Date.now()): Promise<number> {
   if (!days) return 0;
-  const row = await db().getFirstAsync<{ n: number }>(
-    'SELECT COUNT(*) AS n FROM articles WHERE is_saved = 0 AND published_at < ?',
-    [now - days * DAY],
-  );
+  const row = await db().getFirstAsync<{ n: number }>(`SELECT COUNT(*) AS n FROM (${EXPIRED})`, [now - days * DAY]);
   return row?.n ?? 0;
 }
 
 /**
- * Deletes non-saved articles older than the retention window, plus their images.
- * `seen_items` keeps their keys, so the next refresh will not bring them back.
+ * Deletes expired articles (see `EXPIRED`), plus their images. `seen_items`
+ * keeps their keys, so the next refresh will not bring them back.
  */
 export async function applyRetention(now = Date.now()): Promise<number> {
   const days = settings.get().retentionDays;
   if (!days) return 0;
-  const cutoff = now - days * DAY;
-  const rows = await db().getAllAsync<{ id: number }>(
-    'SELECT id FROM articles WHERE is_saved = 0 AND published_at < ?',
-    [cutoff],
-  );
+  const rows = await db().getAllAsync<{ id: number }>(EXPIRED, [now - days * DAY]);
   const ids = rows.map((r) => r.id);
   for (let i = 0; i < ids.length; i += 500) {
     const chunk = ids.slice(i, i + 500);

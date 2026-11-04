@@ -16,7 +16,7 @@ import { useQuery } from '@/db/useQuery';
 import { syncBackgroundRefresh } from '@/feeds/background';
 import { imagesRoot, storageUsage } from '@/feeds/images';
 import { refreshOne } from '@/feeds/refresh';
-import { applyRetention, countExpired } from '@/feeds/retention';
+import { applyRetention, countExpired, KEEP_PER_FEED } from '@/feeds/retention';
 import { openInBrowser } from '@/lib/articleActions';
 import { saveOpmlToDevice, shareOpml } from '@/opml/io';
 import { useSettings, type FeedSort, type ImageMode, type ListStyle, type RetentionDays } from '@/state/settings';
@@ -203,7 +203,7 @@ export default function SettingsScreen() {
           Keep articles for
         </Text>
         <Text variant="meta" tone="tertiary" style={{ paddingHorizontal: theme.space.gutter, paddingBottom: 10 }}>
-          Saved articles are always kept.
+          Counted from when an article arrives. Saved articles, and each feed’s newest {KEEP_PER_FEED}, are always kept.
         </Text>
         <Segmented<RetentionDays>
           options={[
@@ -279,7 +279,7 @@ export default function SettingsScreen() {
         visible={retentionAskOpen}
         onClose={() => setRetentionAskOpen(false)}
         title={`Remove ${retentionAsk.count} ${retentionAsk.count === 1 ? 'article' : 'articles'}?`}
-        subtitle={`Articles older than ${retentionAsk.days} days are deleted now. Saved articles are kept.`}
+        subtitle={`Articles that arrived more than ${retentionAsk.days} days ago are deleted now. Saved articles, and each feed’s newest ${KEEP_PER_FEED}, are kept.`}
         actions={[
           {
             label: `Keep ${retentionAsk.days} days`,
