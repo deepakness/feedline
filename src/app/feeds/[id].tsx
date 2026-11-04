@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { CheckCheck, List, RotateCw, Trash2 } from 'lucide-react-native';
+import { CheckCheck, History, List, RotateCw, Trash2 } from 'lucide-react-native';
 import { useState } from 'react';
 import { ScrollView, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,7 +16,7 @@ import { deleteFeed, getFeed, renameFeed, setFullTextMode } from '@/db/feeds';
 import type { FullTextMode } from '@/db/types';
 import { useQuery } from '@/db/useQuery';
 import { deleteArticleImages } from '@/feeds/images';
-import { refreshOne } from '@/feeds/refresh';
+import { loadOlderPosts, refreshOne } from '@/feeds/refresh';
 import { agoLabel } from '@/lib/time';
 import { openInBrowser } from '@/lib/articleActions';
 import { clearKeptRead } from '@/state/readKeep';
@@ -33,6 +33,7 @@ export default function FeedDetail() {
   // null until the user edits; shows the stored name until then.
   const [draft, setDraft] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
   if (feed === null) {
@@ -63,6 +64,20 @@ export default function FeedDetail() {
       showToast('Refresh failed');
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  const loadOlder = async () => {
+    setLoadingOlder(true);
+    try {
+      const r = await loadOlderPosts(feed.id);
+      showToast(
+        r.error ? r.error : r.added ? `Added ${r.added} older ${r.added === 1 ? 'article' : 'articles'}` : 'No older posts in this feed',
+      );
+    } catch {
+      showToast('Couldn’t load older posts');
+    } finally {
+      setLoadingOlder(false);
     }
   };
 
@@ -174,6 +189,7 @@ export default function FeedDetail() {
           ) : null}
           {counts?.unread ? <Button label="Mark all as read" icon={CheckCheck} kind="secondary" onPress={markRead} /> : null}
           <Button label="Refresh this feed" icon={RotateCw} kind="secondary" loading={refreshing} onPress={doRefresh} />
+          <Button label="Load older posts" icon={History} kind="secondary" loading={loadingOlder} onPress={loadOlder} />
           <Button label="Unsubscribe" icon={Trash2} kind="danger" onPress={() => setConfirmOpen(true)} />
         </View>
       </ScrollView>

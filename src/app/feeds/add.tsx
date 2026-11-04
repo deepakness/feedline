@@ -82,7 +82,7 @@ export default function AddFeed() {
       showToast(
         result.error
           ? `Subscribed, but the first refresh failed: ${result.error}`
-          : `Subscribed to ${c.title}${result.added ? ` · ${result.added} articles` : ''}`,
+          : `Subscribed to ${c.title}${result.added ? ` · ${result.added} ${result.added === 1 ? 'article' : 'articles'}` : ''}`,
       );
       if ((candidates?.length ?? 0) <= 1) close();
     } catch (e) {

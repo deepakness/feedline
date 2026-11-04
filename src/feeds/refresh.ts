@@ -13,15 +13,20 @@ import { settings } from '@/state/settings';
 import { findSiteIcon } from './discover';
 import { FetchError, fetchText, HTML_ACCEPT, isTransient } from './fetch';
 import { downloadIcon, imageDownloadsAllowed, isOnline, localizeImages, localizeThumb } from './images';
-import { parseFeed, type NormalizedItem } from './parse';
+import { parseFeed, type NormalizedFeed, type NormalizedItem } from './parse';
 import { applyRetention, retentionCutoff } from './retention';
 import { fillImagePlaceholders, looksTruncated, sanitizeHtml, withVideoLead } from './sanitize';
 
 /** `transient`: failed on the connection (offline, DNS, timeout), not on the feed itself. */
 type FeedResult = { newIds: number[]; failed: boolean; transient: boolean };
 
-/** A newly added feed contributes only its latest items; older ones are marked seen. */
-const FIRST_FETCH_ITEMS = 25;
+/**
+ * A newly added feed contributes its latest items whatever their age (the
+ * retention window applies to later refreshes); any beyond are marked seen.
+ */
+const FIRST_FETCH_ITEMS = 100;
+/** Of those, how many get images and background full text; the rest are text-only until opened. */
+const FULL_IMPORT_ITEMS = 25;
 /** Per feed and refresh, how many truncated articles get full text in the background. */
 const BACKGROUND_FULL_TEXT = 8;
 /** Connection failures fetching an article page before it is marked failed. */
@@ -121,6 +126,45 @@ export async function refreshOne(feedId: number): Promise<{ added: number; error
   return { added: result.newIds.length, error: result.failed ? (after?.last_error ?? 'Refresh failed') : null };
 }
 
+/**
+ * Adds the posts a feed lists that aren't in the app, even ones marked seen:
+ * older versions skipped posts past the retention window when a feed was
+ * added, and the user asks for them explicitly here. Returns how many arrived.
+ */
+export async function loadOlderPosts(feedId: number): Promise<{ added: number; error: string | null }> {
+  const feed = await getFeed(feedId);
+  if (!feed) return { added: 0, error: 'Feed not found' };
+  const now = Date.now();
+  const newIds: number[] = [];
+  try {
+    const res = await fetchText(feed.url);
+    if (res.status === 'not-modified') return { added: 0, error: null };
+    const parsed = parseFeed(res.body, res.url);
+    await yieldToUi();
+    const items = newestFirst(parsed.items, now).slice(0, FIRST_FETCH_ITEMS);
+    const have = new Set(
+      (await db().getAllAsync<{ key_hash: string }>('SELECT key_hash FROM articles WHERE feed_id = ?', [feed.id])).map((r) => r.key_hash),
+    );
+    const missing = items.filter((item) => !have.has(item.keyHash));
+    const prepared = await prepareItems(feed, parsed, missing, now, FULL_IMPORT_ITEMS);
+    const seenAt = await seenKeys(feed.id);
+    await writeTransaction(async (conn) => {
+      for (const p of prepared) {
+        const id = await insertArticle(conn, feed.id, p, now);
+        if (id) newIds.push(id);
+      }
+      await rememberSeen(conn, feed.id, items, seenAt, now);
+    });
+  } catch (error) {
+    return { added: 0, error: error instanceof Error ? error.message : String(error) };
+  }
+  if (newIds.length) {
+    notifyChange('articles', 'feeds');
+    processPendingArticles().catch(() => {});
+  }
+  return { added: newIds.length, error: null };
+}
+
 type PreparedItem = {
   item: NormalizedItem;
   published: number;
@@ -131,7 +175,75 @@ type PreparedItem = {
   thumb: string | null;
   readingMinutes: number;
   status: ContentStatus;
+  imagesStatus: 'pending' | 'skipped';
 };
+
+/**
+ * Sanitizes `items` for insertion. Items from index `fullUpTo` on are
+ * text-only: no image downloads and no background full text (it still loads
+ * when the article is opened). Sanitizing is synchronous parser work; it runs
+ * outside the write lock and yields between items so the UI stays responsive.
+ */
+async function prepareItems(
+  feed: FeedRow,
+  parsed: NormalizedFeed,
+  items: NormalizedItem[],
+  now: number,
+  fullUpTo = Infinity,
+): Promise<PreparedItem[]> {
+  const fullTextMode = feed.full_text_mode === 'auto' ? settings.get().fullTextDefault : feed.full_text_mode;
+  const siteBase = parsed.siteUrl ?? feed.url;
+  const prepared: PreparedItem[] = [];
+  let backgroundBudget = BACKGROUND_FULL_TEXT;
+  for (const [i, item] of items.entries()) {
+    const full = i < fullUpTo;
+    const clean = sanitizeHtml(withVideoLead(item.html, item.url), item.url ?? siteBase);
+    let status: ContentStatus = 'feed';
+    if (item.url && fullTextMode !== 'never' && (fullTextMode === 'always' || looksTruncated(clean.text))) {
+      status = full && backgroundBudget-- > 0 ? 'pending' : 'lazy';
+    }
+    prepared.push({
+      item,
+      published: item.publishedAt ?? now,
+      title: item.title || clean.excerpt.slice(0, 80) || 'Untitled',
+      excerpt: clean.excerpt,
+      html: fillImagePlaceholders(clean.html, clean.images, []),
+      text: clean.text,
+      thumb: item.thumbUrl ?? clean.images[0] ?? null,
+      readingMinutes: clean.readingMinutes,
+      status,
+      imagesStatus: full ? 'pending' : 'skipped',
+    });
+    await yieldToUi();
+  }
+  return prepared;
+}
+
+/** Newest first; undated items count as published now. */
+function newestFirst(items: NormalizedItem[], now: number): NormalizedItem[] {
+  return items.slice().sort((a, b) => (b.publishedAt ?? now) - (a.publishedAt ?? now));
+}
+
+/** Remembers every key the feed serves, skipping keys refreshed within the last day. */
+async function rememberSeen(conn: SQLiteDatabase, feedId: number, items: NormalizedItem[], seenAt: Map<string, number>, now: number) {
+  for (const item of items) {
+    const lastSeen = seenAt.get(item.keyHash);
+    if (lastSeen !== undefined && lastSeen > now - DAY) continue;
+    await conn.runAsync(
+      `INSERT INTO seen_items (feed_id, key_hash, last_seen_at) VALUES (?, ?, ?)
+       ON CONFLICT(feed_id, key_hash) DO UPDATE SET last_seen_at = excluded.last_seen_at`,
+      [feedId, item.keyHash, now],
+    );
+  }
+}
+
+async function seenKeys(feedId: number): Promise<Map<string, number>> {
+  const rows = await db().getAllAsync<{ key_hash: string; last_seen_at: number }>(
+    'SELECT key_hash, last_seen_at FROM seen_items WHERE feed_id = ?',
+    [feedId],
+  );
+  return new Map(rows.map((r) => [r.key_hash, r.last_seen_at]));
+}
 
 async function refreshFeed(feed: FeedRow): Promise<FeedResult> {
   const now = Date.now();
@@ -154,48 +266,21 @@ async function refreshFeed(feed: FeedRow): Promise<FeedResult> {
 
     const parsed = parseFeed(res.body, res.url);
     await yieldToUi();
-    const cutoff = retentionCutoff(now);
-    const items = parsed.items.slice().sort((a, b) => (b.publishedAt ?? now) - (a.publishedAt ?? now));
+    const items = newestFirst(parsed.items, now);
 
     // Which items are new is decided before any sanitizing, so known items cost nothing.
-    const seenRows = await db().getAllAsync<{ key_hash: string; last_seen_at: number }>(
-      'SELECT key_hash, last_seen_at FROM seen_items WHERE feed_id = ?',
-      [feed.id],
-    );
-    const seenAt = new Map(seenRows.map((r) => [r.key_hash, r.last_seen_at]));
+    const seenAt = await seenKeys(feed.id);
+    // A new feed shows what it lists, however old (up to a cap). Afterwards an
+    // unseen item older than the retention window is one it already removed.
     const firstFetch = feed.last_success_at == null;
+    const cutoff = firstFetch ? null : retentionCutoff(now);
     const fresh = items.filter((item, i) => {
       if (seenAt.has(item.keyHash)) return false;
       if (firstFetch && i >= FIRST_FETCH_ITEMS) return false;
       const published = item.publishedAt ?? now;
       return !(cutoff && published < cutoff);
     });
-
-    // Sanitizing is synchronous parser work; it runs outside the write lock and
-    // yields between items so the UI stays responsive during big refreshes.
-    const fullTextMode = feed.full_text_mode === 'auto' ? settings.get().fullTextDefault : feed.full_text_mode;
-    const siteBase = parsed.siteUrl ?? feed.url;
-    const prepared: PreparedItem[] = [];
-    let backgroundBudget = BACKGROUND_FULL_TEXT;
-    for (const item of fresh) {
-      const clean = sanitizeHtml(withVideoLead(item.html, item.url), item.url ?? siteBase);
-      let status: ContentStatus = 'feed';
-      if (item.url && fullTextMode !== 'never' && (fullTextMode === 'always' || looksTruncated(clean.text))) {
-        status = backgroundBudget-- > 0 ? 'pending' : 'lazy';
-      }
-      prepared.push({
-        item,
-        published: item.publishedAt ?? now,
-        title: item.title || clean.excerpt.slice(0, 80) || 'Untitled',
-        excerpt: clean.excerpt,
-        html: fillImagePlaceholders(clean.html, clean.images, []),
-        text: clean.text,
-        thumb: item.thumbUrl ?? clean.images[0] ?? null,
-        readingMinutes: clean.readingMinutes,
-        status,
-      });
-      await yieldToUi();
-    }
+    const prepared = await prepareItems(feed, parsed, fresh, now, firstFetch ? FULL_IMPORT_ITEMS : Infinity);
 
     const newIds: number[] = [];
     await writeTransaction(async (conn) => {
@@ -207,15 +292,7 @@ async function refreshFeed(feed: FeedRow): Promise<FeedResult> {
       // so retention and the first-fetch cap never let them reappear. A key seen
       // within the last day is fresh enough; retention forgets keys only after
       // twice its window (at least 14 days), so this skips most writes.
-      for (const item of items) {
-        const lastSeen = seenAt.get(item.keyHash);
-        if (lastSeen !== undefined && lastSeen > now - DAY) continue;
-        await conn.runAsync(
-          `INSERT INTO seen_items (feed_id, key_hash, last_seen_at) VALUES (?, ?, ?)
-           ON CONFLICT(feed_id, key_hash) DO UPDATE SET last_seen_at = excluded.last_seen_at`,
-          [feed.id, item.keyHash, now],
-        );
-      }
+      await rememberSeen(conn, feed.id, items, seenAt, now);
       await conn.runAsync(
         `UPDATE feeds SET title = ?, site_url = COALESCE(?, site_url), description = COALESCE(?, description),
            icon_remote = COALESCE(?, icon_remote), etag = ?, last_modified = ?,
@@ -278,9 +355,22 @@ async function insertArticle(conn: SQLiteDatabase, feedId: number, p: PreparedIt
   const r = await conn.runAsync(
     `INSERT INTO articles (feed_id, key_hash, url, title, author, excerpt, thumb_remote,
        published_at, fetched_at, content_status, images_status, reading_minutes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(feed_id, key_hash) DO NOTHING`,
-    [feedId, p.item.keyHash, p.item.url, p.title, p.item.author, p.excerpt, p.thumb, p.published, now, p.status, p.readingMinutes],
+    [
+      feedId,
+      p.item.keyHash,
+      p.item.url,
+      p.title,
+      p.item.author,
+      p.excerpt,
+      p.thumb,
+      p.published,
+      now,
+      p.status,
+      p.imagesStatus,
+      p.readingMinutes,
+    ],
   );
   if (!r.changes) return null;
   await conn.runAsync('INSERT INTO article_bodies (article_id, content_html, content_text) VALUES (?, ?, ?)', [
