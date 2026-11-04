@@ -19,6 +19,7 @@ Offline-first RSS reader for Android (`com.vempus.feedline`), built with Expo an
 - Signing uses `FEEDLINE_RELEASE_*` in `~/.gradle/gradle.properties`. The script rejects any other key, because a different key can't update installs. Never commit the keystore or passwords.
 - Phone: a Pixel 7a over USB, arm64 only. adb is in `/opt/homebrew/share/android-commandlinetools/platform-tools`. Screens are 1080×2400; scale tap coordinates exactly.
 - Undo test side effects: opening an article marks it read, and test feeds need removing.
+- Clear the build caches once testing and releasing are done (the AAB is built and the GitHub release is up); they grow to about 9 GB. First stop the daemons (`cd android && ./gradlew --stop`, then `pkill -f KotlinCompileDaemon`), then delete `android/` (prebuild regenerates it), everything in `~/.gradle` except `gradle.properties` (`caches`, `daemon`, `wrapper`, `native`, `kotlin-profile`, `workers`, `notifications`, `android`) and `~/.android/cache`. Never delete `~/.gradle/gradle.properties` (signing config), the keystores, or `~/.android/adbkey*` (the phone's USB authorisation). The next build downloads everything again and takes longer.
 
 ## Releasing
 
@@ -40,6 +41,8 @@ Two channels: Google Play (the README's main link) and GitHub Releases (APKs). C
 
 - All DB writes go through `write()` / `writeTransaction()`, then `notifyChange`. Lists read via `useQuery`, which keeps row identity so memoized rows don't re-render.
 - Migrations are append-only. `articles_fts` is trigger-synced. `seen_items` stops deleted items from coming back, and a 304 must refresh its `last_seen_at`.
+- A feed's first fetch imports up to 100 posts whatever their age; only the newest 25 get images and background full text, the rest are text-only (`images_status = 'skipped'`) until opened. Later refreshes skip unseen posts older than the retention window. "Load older posts" on a feed's page ignores `seen_items` and adds what the feed lists that isn't in the app.
+- Retention (`src/feeds/retention.ts`) counts from arrival (`MAX(published_at, fetched_at)`) and keeps saved articles and each feed's newest 20. `countExpired` and `applyRetention` share one query.
 - Background offline work (`processPendingArticles`) waits at `whenIdle()` while the user scrolls.
 - `images_status`: `deferred` waits for Wi-Fi and is retried. `skipped` is never retried.
 - Readability runs in a hidden WebView, because Hermes would block the JS thread.

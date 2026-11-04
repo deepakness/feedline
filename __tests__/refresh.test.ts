@@ -78,10 +78,10 @@ jest.mock('@/feeds/fetch', () => {
 
 import { listArticles, markAllRead, searchArticles, setRead, setSaved } from '@/db/articles';
 import { db, getDb } from '@/db/client';
-import { getFeed, insertFeed, sortFeeds } from '@/db/feeds';
+import { getFeed, insertFeed, setFullTextMode, sortFeeds } from '@/db/feeds';
 import type { FeedSummary } from '@/db/types';
 import { localizeImages } from '@/feeds/images';
-import { makeOffline, refreshFeeds, refreshOne } from '@/feeds/refresh';
+import { loadOlderPosts, makeOffline, refreshFeeds, refreshOne } from '@/feeds/refresh';
 import { applyRetention, countExpired } from '@/feeds/retention';
 import { settings } from '@/state/settings';
 
@@ -105,40 +105,38 @@ beforeAll(async () => {
   settings.set({ retentionDays: 30, fullTextDefault: 'never', imageMode: 'off' });
 });
 
-it('inserts new items, dedupes on refresh, and never re-adds items removed by retention', async () => {
+it('imports a new feed whatever the age of its posts, dedupes, and skips old unseen posts later', async () => {
   const url = 'https://site.test/feed';
   const id = await insertFeed({ url });
   mockFeedBodies[url] = rss([
     { guid: 'a', title: 'Fresh one', ageDays: 1, body: 'The quick zebra jumps' },
     { guid: 'b', title: 'Fresh two', ageDays: 8 },
-    { guid: 'old', title: 'Too old to keep', ageDays: 45 },
+    { guid: 'old', title: 'Older than the window', ageDays: 45 },
   ]);
 
+  // A newly added feed shows what it lists, even past the 30-day window.
   const first = await refreshFeeds();
-  expect(first).toEqual(expect.objectContaining({ newArticles: 2, failedFeeds: 0 }));
-  expect((await all()).map((a) => a.title)).toEqual(['Fresh one', 'Fresh two']);
+  expect(first).toEqual(expect.objectContaining({ newArticles: 3, failedFeeds: 0 }));
+  expect((await all()).map((a) => a.title)).toEqual(['Fresh one', 'Fresh two', 'Older than the window']);
   expect((await getFeed(id))!.title).toBe('Test Feed');
+  // Retention counts from arrival, so the old post stays.
+  expect(await applyRetention()).toBe(0);
 
   // Same items again: nothing new.
   expect((await refreshFeeds())!.newArticles).toBe(0);
-  expect(await all()).toHaveLength(2);
+  expect(await all()).toHaveLength(3);
 
   // Search finds content via the FTS triggers.
   expect((await searchArticles('zebr')).map((h) => h.title)).toEqual(['Fresh one']);
 
-  // Shrink retention so "Fresh two" (8 days old) expires; the feed still lists it,
-  // but it must not come back.
-  settings.set({ retentionDays: 7 });
+  // After the first fetch, an unseen post older than the window isn't added.
   mockFeedBodies[url] = rss([
     { guid: 'a', title: 'Fresh one', ageDays: 1 },
-    { guid: 'b', title: 'Fresh two', ageDays: 8 },
+    { guid: 'late', title: 'Late old post', ageDays: 40 },
     { guid: 'c', title: 'Brand new', ageDays: 0 },
   ]);
-  const third = await refreshFeeds();
-  expect(third!.newArticles).toBe(1);
-  expect((await all()).map((a) => a.title).sort()).toEqual(['Brand new', 'Fresh one']);
-  expect(await refreshFeeds()).toEqual(expect.objectContaining({ newArticles: 0 }));
-  expect(await all()).toHaveLength(2);
+  expect((await refreshFeeds())!.newArticles).toBe(1);
+  expect((await all()).map((a) => a.title)).toEqual(['Brand new', 'Fresh one', 'Fresh two', 'Older than the window']);
 });
 
 it('records failures per feed without affecting others', async () => {
@@ -148,18 +146,57 @@ it('records failures per feed without affecting others', async () => {
   expect((await getFeed(id))!.last_error).toBe('Network unavailable');
 });
 
-it('keeps only the newest items from a newly added feed, and never adds the rest later', async () => {
+it('imports up to 100 posts from a new feed, text-only past the newest 25, and never adds the rest later', async () => {
   const url = 'https://big.test/feed';
   const id = await insertFeed({ url });
-  const items = Array.from({ length: 40 }, (_, i) => ({ guid: `big${i}`, title: `Big ${i}`, ageDays: i * 0.1 }));
+  await setFullTextMode(id, 'always');
+  // 120 posts, the oldest four months old: well past the 30-day window.
+  const items = Array.from({ length: 120 }, (_, i) => ({ guid: `big${i}`, title: `Big ${i}`, ageDays: i }));
   mockFeedBodies[url] = rss(items);
-  await refreshFeeds([id]);
+  await refreshFeeds([id], { offline: false });
   const mine = () => listArticles({ kind: 'feed', feedId: id, hideRead: false }, 1000);
   const first = await mine();
-  expect(first).toHaveLength(25);
+  expect(first).toHaveLength(100);
   expect(first[0]!.title).toBe('Big 0');
+  expect(first[99]!.title).toBe('Big 99');
+
+  const rows = await db().getAllAsync<{ title: string; content_status: string; images_status: string }>(
+    'SELECT title, content_status, images_status FROM articles WHERE feed_id = ? ORDER BY published_at DESC',
+    [id],
+  );
+  // The newest 25 download images; background full text stays within its per-feed budget.
+  expect(rows.slice(0, 25).every((r) => r.images_status === 'pending')).toBe(true);
+  expect(rows.filter((r) => r.content_status === 'pending').map((r) => r.title)).toEqual(
+    Array.from({ length: 8 }, (_, i) => `Big ${i}`),
+  );
+  // The rest are text-only: no images, full text only when opened.
+  expect(rows.slice(25).every((r) => r.images_status === 'skipped' && r.content_status === 'lazy')).toBe(true);
+
+  await refreshFeeds([id], { offline: false });
+  expect(await mine()).toHaveLength(100);
+});
+
+it('loads older posts that an earlier version skipped', async () => {
+  const url = 'https://skipped.test/feed';
+  const id = await insertFeed({ url });
+  mockFeedBodies[url] = rss([{ guid: 's0', title: 'Recent', ageDays: 1 }]);
   await refreshFeeds([id]);
-  expect(await mine()).toHaveLength(25);
+  // Older posts appear that the window rules out: marked seen, not added.
+  mockFeedBodies[url] = rss([
+    { guid: 's0', title: 'Recent', ageDays: 1 },
+    { guid: 's1', title: 'Older', ageDays: 40 },
+    { guid: 's2', title: 'Oldest', ageDays: 90 },
+  ]);
+  expect((await refreshFeeds([id]))!.newArticles).toBe(0);
+  const mine = async () => (await listArticles({ kind: 'feed', feedId: id, hideRead: false }, 100)).map((a) => a.title);
+  expect(await mine()).toEqual(['Recent']);
+
+  expect(await loadOlderPosts(id)).toEqual({ added: 2, error: null });
+  expect(await mine()).toEqual(['Recent', 'Older', 'Oldest']);
+  expect(await loadOlderPosts(id)).toEqual({ added: 0, error: null });
+
+  delete mockFeedBodies[url];
+  expect(await loadOlderPosts(id)).toEqual({ added: 0, error: 'Network unavailable' });
 });
 
 it('keeps seen keys fresh while a feed answers "not modified"', async () => {
@@ -295,25 +332,32 @@ it('rewrites seen keys only when they are more than a day old', async () => {
   expect(after[1]!.last_seen_at).toBeGreaterThan(Date.now() - 60e3);
 });
 
-it('counts and removes expired articles, keeping saved ones', async () => {
-  settings.set({ retentionDays: 0 });
+it('expires articles by arrival, keeping saved ones and each feed’s newest 20, and they stay gone', async () => {
+  settings.set({ retentionDays: 30 });
   const url = 'https://old.test/feed';
   const feedId = await insertFeed({ url });
-  mockFeedBodies[url] = rss([
-    { guid: 'o1', title: 'Recent', ageDays: 1 },
-    { guid: 'o2', title: 'Two months', ageDays: 60 },
-    { guid: 'o3', title: 'Saved old', ageDays: 70 },
-  ]);
+  const items = Array.from({ length: 24 }, (_, i) => ({ guid: `o${i}`, title: `Old ${i}`, ageDays: 40 + i }));
+  mockFeedBodies[url] = rss(items);
   await refreshFeeds([feedId]);
-  const mine = async () => (await listArticles({ kind: 'feed', feedId, hideRead: false }, 10)).map((a) => a.title);
-  const saved = (await listArticles({ kind: 'feed', feedId, hideRead: false }, 10)).find((a) => a.title === 'Saved old')!;
-  await setSaved(saved.id, true);
+  const mine = async () => (await listArticles({ kind: 'feed', feedId, hideRead: false }, 100)).map((a) => a.title);
+  expect(await mine()).toHaveLength(24);
+  // Just arrived: nothing expires yet, whatever the window.
+  expect(await countExpired(7)).toBe(0);
+  expect(await applyRetention()).toBe(0);
 
-  expect(await countExpired(30)).toBe(1);
+  // Forty days later the four oldest expire; the newest 20 stay, and so does a saved one.
+  await db().runAsync('UPDATE articles SET fetched_at = fetched_at - ? WHERE feed_id = ?', [40 * DAY, feedId]);
+  expect(await countExpired(30)).toBe(4);
   expect(await countExpired(0)).toBe(0);
-  settings.set({ retentionDays: 30 });
-  expect(await applyRetention()).toBe(1);
-  expect((await mine()).sort()).toEqual(['Recent', 'Saved old']);
+  const saved = (await listArticles({ kind: 'feed', feedId, hideRead: false }, 100)).find((a) => a.title === 'Old 23')!;
+  await setSaved(saved.id, true);
+  expect(await countExpired(30)).toBe(3);
+  expect(await applyRetention()).toBe(3);
+  expect(await mine()).toEqual([...Array.from({ length: 20 }, (_, i) => `Old ${i}`), 'Old 23']);
+
+  // The feed still lists them, but a refresh doesn't bring them back.
+  expect((await refreshFeeds([feedId]))!.newArticles).toBe(0);
+  expect(await mine()).toHaveLength(21);
 });
 
 describe('makeOffline', () => {
